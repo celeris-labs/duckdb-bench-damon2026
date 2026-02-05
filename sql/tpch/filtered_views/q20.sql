@@ -1,5 +1,5 @@
 CREATE TABLE 
-    part_q20
+    part_f20
 AS 
     SELECT 
         * 
@@ -9,7 +9,7 @@ AS
         p_name LIKE 'forest%';
 
 CREATE TABLE 
-    lineitem_q20
+    lineitem_f20
 AS 
     SELECT 
         * 
@@ -20,7 +20,7 @@ AS
         AND l_shipdate < CAST('1995-01-01' AS date);
 
 CREATE TABLE 
-    nation_q20
+    nation_f20
 AS 
     SELECT 
         * 

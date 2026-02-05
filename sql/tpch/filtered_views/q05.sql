@@ -1,5 +1,5 @@
 CREATE TABLE 
-    orders_q05
+    orders_f05
 AS 
     SELECT 
         * 
@@ -10,7 +10,7 @@ AS
         AND o_orderdate < CAST('1995-01-01' AS date);
 
 CREATE TABLE 
-    region_q05
+    region_f05
 AS 
     SELECT 
         * 

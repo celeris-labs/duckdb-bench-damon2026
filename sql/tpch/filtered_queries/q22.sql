@@ -7,7 +7,7 @@ FROM (
         substring(c_phone FROM 1 FOR 2) AS cntrycode,
         c_acctbal
     FROM
-        customer_q22
+        customer_f22
     WHERE
         c_acctbal > (
             SELECT

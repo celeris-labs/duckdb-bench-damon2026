@@ -1,5 +1,5 @@
 CREATE TABLE 
-    region_q08
+    region_f08
 AS 
     SELECT 
         * 
@@ -9,7 +9,7 @@ AS
         r_name = 'AMERICA';
 
 CREATE TABLE 
-    orders_q08
+    orders_f08
 AS 
     SELECT 
         * 
@@ -20,7 +20,7 @@ AS
         AND CAST('1996-12-31' AS date);
 
 CREATE TABLE 
-    part_q08
+    part_f08
 AS 
     SELECT 
         * 

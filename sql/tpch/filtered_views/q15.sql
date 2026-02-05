@@ -1,5 +1,5 @@
 CREATE TABLE 
-    lineitem_q15
+    lineitem_f15
 AS 
     SELECT 
         * 

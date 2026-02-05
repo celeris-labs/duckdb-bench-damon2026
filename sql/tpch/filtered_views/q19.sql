@@ -1,5 +1,5 @@
 CREATE TABLE 
-    part_q19
+    part_f19
 AS 
     SELECT 
         * 
@@ -17,7 +17,7 @@ AS
         AND p_size BETWEEN 1 AND 15);
 
 CREATE TABLE 
-    lineitem_q19
+    lineitem_f19
 AS 
     SELECT 
         * 

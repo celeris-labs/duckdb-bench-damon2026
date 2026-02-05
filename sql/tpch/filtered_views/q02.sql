@@ -1,5 +1,5 @@
 CREATE TABLE 
-    region_q02 
+    region_f02 
 AS 
     SELECT 
         * 
@@ -9,7 +9,7 @@ AS
         r_name = 'EUROPE';
 
 CREATE TABLE 
-    part_q02
+    part_f02
 AS 
     SELECT 
         * 

@@ -3,11 +3,11 @@ SELECT
     sum(l_extendedprice * (1 - l_discount)) AS revenue
 FROM
     customer,
-    orders_q05,
+    orders_f05,
     lineitem,
     supplier,
     nation,
-    region_q05
+    region_f05
 WHERE
     c_custkey = o_custkey
     AND l_orderkey = o_orderkey

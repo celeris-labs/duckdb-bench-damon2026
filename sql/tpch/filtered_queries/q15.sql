@@ -3,7 +3,7 @@ WITH revenue AS (
         l_suppkey AS supplier_no,
         sum(l_extendedprice * (1 - l_discount)) AS total_revenue
     FROM
-        lineitem_q15
+        lineitem_f15
     GROUP BY
         supplier_no
 )

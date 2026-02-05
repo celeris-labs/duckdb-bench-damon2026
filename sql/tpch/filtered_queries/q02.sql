@@ -8,11 +8,11 @@ SELECT
     s_phone,
     s_comment
 FROM
-    part_q02,
+    part_f02,
     supplier,
     partsupp,
     nation,
-    region_q02
+    region_f02
 WHERE
     p_partkey = ps_partkey
     AND s_suppkey = ps_suppkey
@@ -25,7 +25,7 @@ WHERE
             partsupp,
             supplier,
             nation,
-            region_q02
+            region_f02
         WHERE
             p_partkey = ps_partkey
             AND s_suppkey = ps_suppkey

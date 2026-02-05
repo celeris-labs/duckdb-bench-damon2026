@@ -16,7 +16,7 @@ SELECT
         END) AS low_line_count
 FROM
     orders,
-    lineitem_q12
+    lineitem_f12
 WHERE
     o_orderkey = l_orderkey
 GROUP BY

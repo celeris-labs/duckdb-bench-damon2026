@@ -11,11 +11,11 @@ FROM (
         l_extendedprice * (1 - l_discount) AS volume
     FROM
         supplier,
-        lineitem_q07,
+        lineitem_f07,
         orders,
         customer,
-        nation_q07 n1,
-        nation_q07 n2
+        nation_f07 n1,
+        nation_f07 n2
     WHERE
         s_suppkey = l_suppkey
         AND o_orderkey = l_orderkey

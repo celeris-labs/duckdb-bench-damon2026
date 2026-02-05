@@ -1,8 +1,8 @@
 SELECT
     sum(l_extendedprice * (1 - l_discount)) AS revenue
 FROM
-    lineitem_q19,
-    part_q19
+    lineitem_f19,
+    part_f19
 WHERE (p_partkey = l_partkey
     AND p_brand = 'Brand#12'
     AND l_quantity >= 1

@@ -9,8 +9,8 @@ SELECT
     c_comment
 FROM
     customer,
-    orders_q10,
-    lineitem_q10,
+    orders_f10,
+    lineitem_f10,
     nation
 WHERE
     c_custkey = o_custkey

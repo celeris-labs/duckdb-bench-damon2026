@@ -1,5 +1,5 @@
 CREATE TABLE 
-    orders_q13
+    orders_f13
 AS 
     SELECT 
         * 

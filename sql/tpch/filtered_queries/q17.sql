@@ -2,7 +2,7 @@ SELECT
     sum(l_extendedprice) / 7.0 AS avg_yearly
 FROM
     lineitem,
-    part_q17
+    part_f17
 WHERE
     p_partkey = l_partkey
     AND l_quantity < (

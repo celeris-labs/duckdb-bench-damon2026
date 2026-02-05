@@ -10,7 +10,7 @@ SELECT
     avg(l_discount) AS avg_disc,
     count(*) AS count_order
 FROM
-    lineitem_q01
+    lineitem_f01
 GROUP BY
     l_returnflag,
     l_linestatus

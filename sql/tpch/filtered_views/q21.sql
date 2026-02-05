@@ -1,5 +1,5 @@
 CREATE TABLE 
-    orders_q21
+    orders_f21
 AS 
     SELECT 
         * 
@@ -9,7 +9,7 @@ AS
         o_orderstatus = 'F';
 
 CREATE TABLE 
-    nation_q21
+    nation_f21
 AS 
     SELECT 
         * 

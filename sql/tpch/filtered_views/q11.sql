@@ -1,5 +1,5 @@
 CREATE TABLE 
-    nation_q11
+    nation_f11
 AS 
     SELECT 
         * 

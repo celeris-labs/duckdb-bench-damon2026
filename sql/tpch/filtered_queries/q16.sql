@@ -5,14 +5,14 @@ SELECT
     count(DISTINCT ps_suppkey) AS supplier_cnt
 FROM
     partsupp,
-    part_q16
+    part_f16
 WHERE
     p_partkey = ps_partkey
     AND ps_suppkey NOT IN (
         SELECT
             s_suppkey
         FROM
-            supplier_q16)
+            supplier_f16)
 GROUP BY
     p_brand,
     p_type,

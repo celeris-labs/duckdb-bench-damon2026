@@ -1,5 +1,5 @@
 CREATE TABLE 
-    customer_q22
+    customer_f22
 AS 
     SELECT 
         * 

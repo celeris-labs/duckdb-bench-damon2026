@@ -4,9 +4,9 @@ SELECT
     o_orderdate,
     o_shippriority
 FROM
-    customer_q03,
-    orders_q03,
-    lineitem_q03
+    customer_f03,
+    orders_f03,
+    lineitem_f03
 WHERE
     c_custkey = o_custkey
     AND l_orderkey = o_orderkey

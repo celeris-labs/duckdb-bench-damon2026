@@ -3,7 +3,7 @@ SELECT
     s_address
 FROM
     supplier,
-    nation_q20
+    nation_f20
 WHERE
     s_suppkey IN (
         SELECT
@@ -15,12 +15,12 @@ WHERE
                 SELECT
                     p_partkey
                 FROM
-                    part_q20)
+                    part_f20)
             AND ps_availqty > (
                 SELECT
                     0.5 * sum(l_quantity)
                 FROM
-                    lineitem_q20
+                    lineitem_f20
                 WHERE
                     l_partkey = ps_partkey
                     AND l_suppkey = ps_suppkey))

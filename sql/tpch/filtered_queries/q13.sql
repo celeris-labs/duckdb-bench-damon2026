@@ -7,7 +7,7 @@ FROM (
         count(o_orderkey)
     FROM
         customer
-    LEFT OUTER JOIN orders_q13 ON c_custkey = o_custkey
+    LEFT OUTER JOIN orders_f13 ON c_custkey = o_custkey
 GROUP BY
     c_custkey) AS c_orders (c_custkey,
         c_count)

@@ -1,5 +1,5 @@
 CREATE TABLE 
-    lineitem_q10
+    lineitem_f10
 AS 
     SELECT 
         * 
@@ -9,7 +9,7 @@ AS
         l_returnflag = 'R';
 
 CREATE TABLE 
-    orders_q10
+    orders_f10
 AS 
     SELECT 
         * 

@@ -1,5 +1,5 @@
 CREATE TABLE 
-    lineitem_q07
+    lineitem_f07
 AS 
     SELECT 
         * 
@@ -10,7 +10,7 @@ AS
         AND CAST('1996-12-31' AS date);
 
 CREATE TABLE 
-    nation_q07
+    nation_f07
 AS 
     SELECT 
         * 

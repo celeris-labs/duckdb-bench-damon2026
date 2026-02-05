@@ -1,5 +1,5 @@
 CREATE TABLE 
-    lineitem_q04
+    lineitem_f04
 AS 
     SELECT 
         * 
@@ -9,7 +9,7 @@ AS
         l_commitdate < l_receiptdate;
 
 CREATE TABLE 
-    orders_q04
+    orders_f04
 AS 
     SELECT 
         * 

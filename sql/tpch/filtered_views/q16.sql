@@ -1,5 +1,5 @@
 CREATE TABLE 
-    supplier_q16
+    supplier_f16
 AS 
     SELECT 
         * 
@@ -9,7 +9,7 @@ AS
         s_comment LIKE '%Customer%Complaints%';
 
 CREATE TABLE 
-    part_q16
+    part_f16
 AS 
     SELECT 
         * 

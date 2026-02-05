@@ -1,5 +1,5 @@
 CREATE TABLE 
-    part_q09
+    part_f09
 AS 
     SELECT 
         * 

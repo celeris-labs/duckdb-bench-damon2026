@@ -4,7 +4,7 @@ SELECT
 FROM
     partsupp,
     supplier,
-    nation_q11
+    nation_f11
 WHERE
     ps_suppkey = s_suppkey
     AND s_nationkey = n_nationkey
@@ -17,7 +17,7 @@ HAVING
         FROM
             partsupp,
             supplier,
-            nation_q11
+            nation_f11
         WHERE
             ps_suppkey = s_suppkey
             AND s_nationkey = n_nationkey)

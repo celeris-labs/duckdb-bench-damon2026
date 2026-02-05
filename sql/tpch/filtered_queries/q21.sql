@@ -4,8 +4,8 @@ SELECT
 FROM
     supplier,
     lineitem l1,
-    orders_q21,
-    nation_q21
+    orders_f21,
+    nation_f21
 WHERE
     s_suppkey = l1.l_suppkey
     AND o_orderkey = l1.l_orderkey

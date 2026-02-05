@@ -1,5 +1,5 @@
 CREATE TABLE 
-    customer_q03 
+    customer_f03 
 AS 
     SELECT 
         * 
@@ -9,7 +9,7 @@ AS
         c_mktsegment = 'BUILDING';
 
 CREATE TABLE 
-    orders_q03
+    orders_f03
 AS 
     SELECT 
         * 
@@ -19,7 +19,7 @@ AS
         o_orderdate < CAST('1995-03-15' AS date);
 
 CREATE TABLE 
-    lineitem_q03
+    lineitem_f03
 AS 
     SELECT 
         * 
