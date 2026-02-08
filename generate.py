@@ -76,10 +76,10 @@ def main():
     parser.add_argument(
         "-o", "--output",
         type=str,
-        default="data/tpch",
+        default="data/tpch-1",
         dest="output_dir",
         metavar="DIR",
-        help="Output directory (default: data/tpch)"
+        help="Output directory (default: data/tpch-1)"
     )
     
     args = parser.parse_args()
