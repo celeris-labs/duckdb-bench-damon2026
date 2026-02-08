@@ -65,7 +65,7 @@ Source string_to_source(const std::string& s) {
 // ============================================================================
 
 struct Config {
-    std::string data_dir = "/mnt/ramdisk/tpch-1";
+    std::string data_dir = "data/tpch";
     Source source = Source::PARQUET;
     int threads = 1;
     int repetitions = 5;
@@ -377,7 +377,7 @@ int main(int argc, char* argv[]) {
     
     auto results = run_benchmark(config);
     
-    write_json(config, results, "run" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".json");
+    write_json(config, results, "measurements/run-" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".json");
     
     return 0;
 }
