@@ -199,10 +199,15 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialize DuckDB instance
-    auto db = std::make_shared<duckdb::DuckDB>(nullptr);
+    duckdb::DBConfig duck_config;
+    duck_config.SetOptionByName("allow_unsigned_extensions", duckdb::Value::BOOLEAN(true));
+    auto db = std::make_shared<duckdb::DuckDB>(nullptr, &duck_config);
     duckdb::Connection setup_con(*db);
     
     setup_con.Query("SET GLOBAL enable_object_cache TO false");
+
+    // Load view rewriter extension
+    setup_con.Query("LOAD 'extension/build/release/extension/view_rewriter/view_rewriter.duckdb_extension'");
     
     // Load data
     std::cout << "Loading data..." << std::endl;

@@ -71,10 +71,15 @@ std::vector<QueryResult> run_benchmark(const Config& config, const std::vector<f
     std::vector<QueryResult> results;
     
     // Initialize DuckDB
-    duckdb::DuckDB db(nullptr); // In-memory database
+    duckdb::DBConfig duck_config;
+    duck_config.SetOptionByName("allow_unsigned_extensions", duckdb::Value::BOOLEAN(true));
+    duckdb::DuckDB db(nullptr, &duck_config); // In-memory database
     duckdb::Connection con(db);
     
     con.Query("SET enable_object_cache TO false");
+
+    // Load view rewriter extension
+    con.Query("LOAD 'extension/build/release/extension/view_rewriter/view_rewriter.duckdb_extension'");
     
     // Load data
     load_data(con, config.data_dir, config.source);

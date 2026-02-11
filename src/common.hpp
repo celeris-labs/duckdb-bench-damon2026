@@ -68,9 +68,7 @@ private:
 std::vector<fs::path> get_queries(Source source) {
     // Determine query directory based on source
     std::string query_dir = "sql/tpch/queries/";
-    if (source == Source::FILTERED) {
-        query_dir = "sql/tpch/filtered_queries/";
-    } else if (source == Source::PROJECTED) {
+    if (source == Source::PROJECTED) {
         query_dir = "sql/tpch/projected_queries/";
     }
     
