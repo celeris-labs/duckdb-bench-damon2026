@@ -63,6 +63,7 @@ def plot_appetizer(df):
     plt.rcParams.update({
         "grid.linestyle": "--",
         "grid.alpha": 1.0,
+        "grid.color": "black",
         "font.size": 12
     })
 
@@ -75,16 +76,16 @@ def plot_appetizer(df):
     ax.grid(axis='x', visible=False)
 
     subset = data[(data["source"] == "parquet") & (data["streams"] == 8)].sort_values("threads")
-    ax.plot(subset["threads"], subset["runtime_sec"], marker="s", color=COLOR_PARQUET, 
-            label="Parquet", linewidth=2)
+    ax.plot(subset["threads"], (8.0 * 22) / subset["runtime_sec"], marker="s", color=COLOR_PARQUET, 
+            label="Parquet files", linewidth=2)
     
-    memory_val = data[(data["source"] == "memory") & (data["streams"] == 8)]["runtime_sec"].values[0]
-    ax.axhline(y=memory_val, color=COLOR_MEMORY, linestyle="--", linewidth=2, label="Memory")
+    memory_val = (8.0 * 22) / data[(data["source"] == "memory") & (data["streams"] == 8)]["runtime_sec"].values[0]
+    ax.axhline(y=memory_val, color=COLOR_MEMORY, linestyle="--", linewidth=2, label="In-memory tables (threads=8)")
 
-    ax.set_xlabel("Number of Threads")
-    ax.set_ylabel("Latency (sec)")
+    ax.set_xlabel("Number of threads")
+    ax.set_ylabel("Queries / s")
     ax.set_xticks(sorted(df["threads"].unique()))
-    ax.legend(loc="upper right", framealpha=1.0)
+    ax.legend(loc="lower right", framealpha=1.0)
     plt.tight_layout()
     plt.savefig("plots/latency_by_threads.pdf", bbox_inches="tight")
 

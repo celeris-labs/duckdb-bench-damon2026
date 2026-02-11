@@ -38,12 +38,11 @@ if(NOT DuckDB_FOUND)
     FetchContent_MakeAvailable(duckdb)
 endif()
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 # Main benchmark executables
 add_executable(queries    src/queries.cpp)
 add_executable(throughput src/throughput.cpp)
-
-target_include_directories(queries PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_include_directories(throughput PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # Determine which DuckDB target to use
 if(DuckDB_FOUND)
