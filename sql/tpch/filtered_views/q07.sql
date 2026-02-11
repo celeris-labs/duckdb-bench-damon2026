@@ -19,3 +19,7 @@ AS
     WHERE
         n_name = 'FRANCE' 
         OR n_name = 'GERMANY';
+
+SELECT * FROM view_rewriter_add_rule('lineitem', "l_shipdate>='1995-01-01'::DATE AND l_shipdate<='1996-12-31'::DATE", 'lineitem_f07');
+SELECT * FROM view_rewriter_add_rule('nation', "optional: n_name='GERMANY' OR n_name='FRANCE'", 'nation_f07');
+SELECT * FROM view_rewriter_add_rule('nation', "optional: n_name='FRANCE' OR n_name='GERMANY'", 'nation_f07');

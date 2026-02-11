@@ -1,5 +1,5 @@
 CREATE TABLE 
-    part_f19
+    part_unused
 AS 
     SELECT 
         * 
@@ -24,15 +24,9 @@ AS
     FROM 
         read_parquet('data/tpch/lineitem.parquet')
     WHERE
-        (l_quantity >= 1
-        AND l_quantity <= 1 + 10
-        AND l_shipmode IN ('AIR', 'AIR REG')
-        AND l_shipinstruct = 'DELIVER IN PERSON')
-        OR (l_quantity >= 10
-        AND l_quantity <= 10 + 10
-        AND l_shipmode IN ('AIR', 'AIR REG')
-        AND l_shipinstruct = 'DELIVER IN PERSON')
-        OR (l_quantity >= 20
+        l_quantity >= 1
         AND l_quantity <= 20 + 10
         AND l_shipmode IN ('AIR', 'AIR REG')
-        AND l_shipinstruct = 'DELIVER IN PERSON');
+        AND l_shipinstruct = 'DELIVER IN PERSON';
+
+SELECT * FROM view_rewriter_add_rule('lineitem', "l_shipinstruct='DELIVER IN PERSON' AND optional: l_shipmode IN ('AIR', 'AIR REG')", 'lineitem_f19');
