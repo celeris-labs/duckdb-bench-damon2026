@@ -10,7 +10,7 @@ cd ..
 
 To generate data (the benchmark should be run on alveo-box-01):
 ```
-python3 generate.py
+python3 generate.py -s 1 -f parquet -o data/tpch-1
 ```
 
 To put data into tmpfs on the HACC cluster:

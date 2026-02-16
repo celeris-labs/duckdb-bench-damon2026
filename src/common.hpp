@@ -86,6 +86,24 @@ std::vector<fs::path> get_queries(Source source) {
     return queries;
 }
 
+void load_views(duckdb::Connection& con, const std::string& dir_path, const std::string& data_dir) {
+    for (const auto& entry : fs::directory_iterator(dir_path)) {
+        std::ifstream f(entry.path());
+        std::string sql((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+
+        // Replace hardcoded data path with configured data_dir
+        size_t pos;
+        while ((pos = sql.find("data/tpch")) != std::string::npos) {
+            sql.replace(pos, 9, data_dir);
+        }
+
+        auto r = con.Query(sql);
+        if (r->HasError()) {
+            throw std::runtime_error("Failed to load view: " + r->GetError());
+        }
+    }
+}
+
 void load_data(duckdb::Connection& con, const std::string& data_dir, Source source) {
     const std::vector<std::string> tables = {
         "customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"
@@ -111,25 +129,22 @@ void load_data(duckdb::Connection& con, const std::string& data_dir, Source sour
                 sql = "CREATE TABLE " + table + " AS SELECT * FROM read_parquet('" +
                       data_dir + "/" + table + ".parquet')"; break;
         }
-        con.Query(sql);
+
+        auto r = con.Query(sql);
+        if (r->HasError()) {
+            throw std::runtime_error("Failed to load table '" + table + "': " + r->GetError());
+        }
     }
     
     // Load filtered views if needed
-    if (source == Source::FILTERED || source == Source::PROJECTED) {
-        for (const auto& entry : fs::directory_iterator("sql/tpch/filtered_views/")) {
-            std::ifstream f(entry.path());
-            std::string sql((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-            con.Query(sql);
-        }
+    if (source == Source::FILTERED) {
+        load_views(con, "sql/tpch/filtered_views", data_dir);
     }
     
     // Load projected views if needed
     if (source == Source::PROJECTED) {
-        for (const auto& entry : fs::directory_iterator("sql/tpch/projected_views/")) {
-            std::ifstream f(entry.path());
-            std::string sql((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-            con.Query(sql);
-        }
+        load_views(con, "sql/tpch/filtered_views", data_dir);
+        load_views(con, "sql/tpch/projected_views", data_dir);
     }
 }
 

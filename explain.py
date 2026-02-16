@@ -73,7 +73,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    data_dir = "data/tpch"
+    data_dir = "data/tpch-1"
     
     source_map = {
         "parquet": Source.PARQUET,

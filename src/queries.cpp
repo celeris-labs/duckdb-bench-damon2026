@@ -28,35 +28,79 @@ struct Config {
 // Statistics
 // ============================================================================
 
-struct Statistics {
-    std::vector<double> runtime;
-    std::vector<double> latency;
-    std::vector<double> cpu_time;
-    std::vector<size_t> memory_footprint;
-    std::vector<size_t> rows_scanned;
-    size_t n = 0;
+struct OperatorBreakdown {
+    double scan = 0;
+    double filter = 0;
+    double projection = 0;
+    double join = 0;
+    double aggregation = 0;
+    double sort = 0;
+    double other = 0;
+
+    OperatorBreakdown &operator+=(const OperatorBreakdown &rhs) {
+        scan += rhs.scan;
+        filter += rhs.filter;
+        projection += rhs.projection;
+        join += rhs.join;
+        aggregation += rhs.aggregation;
+        sort += rhs.sort;
+        other += rhs.other;
+        return *this;
+    }
 };
 
-struct MeanStatistics {
+struct Statistics {
     double runtime;
     double latency;
     double cpu_time;
     size_t memory_footprint;
     size_t rows_scanned;
+    OperatorBreakdown ops;
 };
 
-MeanStatistics mean_stats(Statistics &stats) {
-    MeanStatistics mean_stats{};
-    if (stats.n == 0) return mean_stats;
+Statistics median(std::vector<Statistics> values) {
+    assert(!values.empty());
+    std::sort(values.begin(), values.end(), [](const Statistics &a, const Statistics &b) {
+        return a.latency < b.latency;
+    });
+    return values[values.size() / 2];
+};
+
+OperatorBreakdown traverse(const duckdb::ProfilingNode &node) {
+    OperatorBreakdown stats;
+    auto &info = node.GetProfilingInfo();
     
-    mean_stats.runtime          = std::accumulate(stats.runtime.begin(), stats.runtime.end(), 0.0) / stats.n;
-    mean_stats.latency          = std::accumulate(stats.latency.begin(), stats.latency.end(), 0.0) / stats.n;
-    mean_stats.cpu_time         = std::accumulate(stats.cpu_time.begin(), stats.cpu_time.end(), 0.0) / stats.n;
-    mean_stats.memory_footprint = std::accumulate(stats.memory_footprint.begin(), stats.memory_footprint.end(), 0ULL) / stats.n;
-    mean_stats.rows_scanned     = std::accumulate(stats.rows_scanned.begin(), stats.rows_scanned.end(), 0ULL) / stats.n;
+    std::string type = info.GetMetricValue<std::string>(duckdb::MetricsType::OPERATOR_NAME);
+    auto cpu_time = info.GetMetricValue<double>(duckdb::MetricsType::OPERATOR_TIMING);
+
+    if (type == "HASH_JOIN" || type == "LEFT_DELIM_JOIN" || type == "RIGHT_DELIM_JOIN" || type == "NESTED_LOOP_JOIN") {
+        stats.join += cpu_time;
+    } else if (type == "SEQ_SCAN " || type == "READ_PARQUET " || type == "COLUMN_DATA_SCAN" || type == "DELIM_SCAN" || type == "DUMMY_SCAN") {
+        stats.scan += cpu_time;
+    } else if (type == "FILTER") {
+        stats.filter += cpu_time;
+    } else if (type == "PROJECTION") {
+        stats.projection += cpu_time;
+    } else if (type == "HASH_GROUP_BY" || type == "PERFECT_HASH_GROUP_BY" || type == "UNGROUPED_AGGREGATE") {
+        stats.aggregation += cpu_time;
+    } else if (type == "ORDER_BY" || type == "TOP_N") {
+        stats.sort += cpu_time;
+    } else if (type == "CTE" || type == "CTE_SCAN") { // Common Table Expression
+        stats.other += cpu_time;
+    } else if (type == "") {
+        // NOP
+    } else {
+        std::cout << "Unknown type " << type << std::endl;
+        stats.other += cpu_time;
+    }
     
-    return mean_stats;
-}
+    // Recurse into children
+    for (auto &child : node.children) {
+        stats += traverse(*child);
+    }
+
+    return stats;
+};
 
 // ============================================================================
 // Benchmark execution
@@ -64,7 +108,7 @@ MeanStatistics mean_stats(Statistics &stats) {
 
 struct QueryResult {
     std::string filename;
-    MeanStatistics stats;
+    Statistics stats;
 };
 
 std::vector<QueryResult> run_benchmark(const Config& config, const std::vector<fs::path> &query_paths) {
@@ -76,13 +120,15 @@ std::vector<QueryResult> run_benchmark(const Config& config, const std::vector<f
     duckdb::DuckDB db(nullptr, &duck_config); // In-memory database
     duckdb::Connection con(db);
     
-    con.Query("SET enable_object_cache TO false");
+    con.Query("SET parquet_metadata_cache TO true");
 
     // Load view rewriter extension
     con.Query("LOAD 'extension/build/release/extension/view_rewriter/view_rewriter.duckdb_extension'");
     
     // Load data
     load_data(con, config.data_dir, config.source);
+
+    con.Query("SELECT * FROM view_rewriter_stats()");
 
     con.Query("SET threads TO " + std::to_string(config.threads));
 
@@ -93,10 +139,10 @@ std::vector<QueryResult> run_benchmark(const Config& config, const std::vector<f
     
     // Run each query
     for (const auto& query_path : query_paths) {
-        Statistics stats;
+        std::vector<Statistics> stats;
 
         // Print filename (matching Python behavior)
-        std::cout << query_path.string() << std::endl;
+        std::cout << "Running query " << query_path.string() << "..." << std::endl;
         
         // Read query
         std::ifstream f(query_path);
@@ -119,17 +165,21 @@ std::vector<QueryResult> run_benchmark(const Config& config, const std::vector<f
             double elapsed = timer.stop_seconds();
             
             // Get statistics
-            auto profiling_info = con.GetProfilingTree()->GetProfilingInfo();
-            stats.runtime.push_back(elapsed);
-            stats.latency.push_back(profiling_info.GetMetricValue<double>(duckdb::MetricsType::LATENCY));
-            stats.cpu_time.push_back(profiling_info.GetMetricValue<double>(duckdb::MetricsType::CPU_TIME));
-            stats.rows_scanned.push_back(profiling_info.GetMetricValue<size_t>(duckdb::MetricsType::CUMULATIVE_ROWS_SCANNED));
-            stats.memory_footprint.push_back(profiling_info.GetMetricValue<size_t>(duckdb::MetricsType::SYSTEM_PEAK_BUFFER_MEMORY));
-            stats.n++;
+            auto profiling_tree = con.GetProfilingTree();
+            auto profiling_info = profiling_tree->GetProfilingInfo();
+
+            Statistics stat;
+            stat.runtime = elapsed;
+            stat.latency = profiling_info.GetMetricValue<double>(duckdb::MetricsType::LATENCY);
+            stat.cpu_time = profiling_info.GetMetricValue<double>(duckdb::MetricsType::CPU_TIME);
+            stat.rows_scanned = profiling_info.GetMetricValue<size_t>(duckdb::MetricsType::CUMULATIVE_ROWS_SCANNED);
+            stat.memory_footprint = profiling_info.GetMetricValue<size_t>(duckdb::MetricsType::SYSTEM_PEAK_BUFFER_MEMORY);
+            stat.ops = traverse(*profiling_tree);
+            stats.push_back(stat);
         }
         
         // Calculate average
-        result.stats = mean_stats(stats);
+        result.stats = median(stats);
         results.push_back(result);
     }
     
@@ -217,7 +267,16 @@ void write_json(const Config &config, const std::vector<QueryResult> &results, c
         out << "        \"data_dir\": \"" << config.data_dir << "\",\n";
         out << "        \"source\": \"" << source_to_string(config.source) << "\",\n";
         out << "        \"threads\": " << config.threads << ",\n";
-        out << "        \"repetitions\": " << config.repetitions << "\n";
+        out << "        \"repetitions\": " << config.repetitions << ",\n";
+        out << "        \"operators\": {\n";
+        out << "            \"scan\": " << std::fixed << std::setprecision(6) << r.stats.ops.scan << ",\n";
+        out << "            \"filter\": " << std::fixed << std::setprecision(6) << r.stats.ops.filter << ",\n";
+        out << "            \"projection\": " << std::fixed << std::setprecision(6) << r.stats.ops.projection << ",\n";
+        out << "            \"join\": " << std::fixed << std::setprecision(6) << r.stats.ops.join << ",\n";
+        out << "            \"aggregation\": " << std::fixed << std::setprecision(6) << r.stats.ops.aggregation << ",\n";
+        out << "            \"sort\": " << std::fixed << std::setprecision(6) << r.stats.ops.sort << ",\n";
+        out << "            \"other\": " << std::fixed << std::setprecision(6) << r.stats.ops.other << "\n";
+        out << "        }\n";
         out << "    }" << (i < results.size() - 1 ? "," : "") << "\n";
     }
     out << "]\n";
