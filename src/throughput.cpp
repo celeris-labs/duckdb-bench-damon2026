@@ -143,6 +143,9 @@ Config parse_args(int argc, char* argv[]) {
                     exit(1);
                 }
                 break;
+            case 'r':
+                config.repetitions = std::stoi(optarg);
+                break;
             case 'S':
                 config.streams = std::stoi(optarg);
                 break;
