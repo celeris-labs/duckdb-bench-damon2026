@@ -51,7 +51,7 @@ def generate_tpch_parquet(output_dir: str = "data/tpch", format: str = "parquet"
         print(f"  -> {row_count:,} rows")
     
     con.close()
-    print(f"\nDone! Parquet files written to {output_path.absolute()}")
+    print(f"\nDone! Files written to {output_path.absolute()}")
 
 def main():
     parser = argparse.ArgumentParser(
