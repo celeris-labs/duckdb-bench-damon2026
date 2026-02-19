@@ -92,11 +92,10 @@ def main():
     )
     parser.add_argument(
         "-S", "--sorted",
-        type=bool,
+        action="store_true",
         default=False,
         dest="sorted",
-        metavar="SORT",
-        help="Wether to sort lineitem by l_shipdate and orders by o_orderdate (default: False)"
+        help="Sort lineitem by l_shipdate and orders by o_orderdate (default: False)"
     )
     
     args = parser.parse_args()
