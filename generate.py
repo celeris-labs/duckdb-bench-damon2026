@@ -2,7 +2,7 @@ import duckdb
 from pathlib import Path
 import argparse
 
-def generate_tpch_parquet(output_dir: str = "data/tpch", format: str = "parquet", scale_factor: int = 1):
+def generate_tpch_parquet(output_dir: str = "data/tpch", format: str = "parquet", scale_factor: int = 1, sorted: bool = False):
     """
     Generate TPC-H data and write each table to a Parquet file.
     
@@ -34,17 +34,26 @@ def generate_tpch_parquet(output_dir: str = "data/tpch", format: str = "parquet"
         "orders",
         "lineitem"
     ]
+
+    copy_options = {
+        "parquet": "FORMAT PARQUET, COMPRESSION SNAPPY",
+        "csv": "FORMAT CSV",
+        "json": "FORMAT JSON"
+    }
+
+    sort_column = {
+        "lineitem": "l_shipdate",
+        "orders": "o_orderdate"
+    }
     
     # Export each table to Parquet
     for table in tables:
         filename = output_path / f"{table}.{format}"
         print(f"Writing {table} to {filename}...")
-        if format == "parquet":
-            con.execute(f"COPY {table} TO '{filename}' (FORMAT PARQUET, COMPRESSION SNAPPY)")
-        elif format == "csv":
-            con.execute(f"COPY {table} TO '{filename}' (FORMAT CSV)")
-        elif format == "json":
-            con.execute(f"COPY {table} TO '{filename}' (FORMAT JSON)")
+        if sorted and table in sort_column:
+            con.execute(f"COPY (SELECT * FROM {table} ORDER BY {sort_column[table]}) TO '{filename}' ({copy_options[format]})")
+        else:
+            con.execute(f"COPY {table} TO '{filename}' ({copy_options[format]})")
         
         # Print row count for verification
         row_count = con.execute(f"SELECT COUNT(*) FROM '{filename}'").fetchone()[0]
@@ -81,9 +90,17 @@ def main():
         metavar="DIR",
         help="Output directory (default: data/tpch-1)"
     )
+    parser.add_argument(
+        "-S", "--sorted",
+        type=bool,
+        default=False,
+        dest="sorted",
+        metavar="SORT",
+        help="Wether to sort lineitem by l_shipdate and orders by o_orderdate (default: False)"
+    )
     
     args = parser.parse_args()
-    generate_tpch_parquet(scale_factor=args.scale_factor, format=args.format, output_dir=args.output_dir)
+    generate_tpch_parquet(scale_factor=args.scale_factor, format=args.format, output_dir=args.output_dir, sorted=args.sorted)
 
 
 if __name__ == "__main__":

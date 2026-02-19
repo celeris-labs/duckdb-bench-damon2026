@@ -30,6 +30,9 @@ COLOR_QUERY = "#5E81AC"
 COLOR_DECODE = "#BF616A"
 COLOR_FILTERED = "#A3BE8C"
 
+COLOR_CSV = "#D08770"
+COLOR_JSON = "#B48EAD"
+
 def plot_cpu_time(df):
     data = df.copy()
     data = data[data["threads"] == 1]
@@ -97,7 +100,7 @@ def plot_appetizer(df_10, df_30):
                 label="Parquet files", markersize=2)
         
         subset = data[(data["source"] == "memory") & (data["streams"] == streams)].sort_values("threads")
-        ax.plot(subset["threads"], factor / subset["runtimes"].apply(lambda x: min(x)), marker="o", color=COLOR_FILTERED, 
+        ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="o", color=COLOR_FILTERED, 
                 label="Tables", markersize=2)
         
         subset = data[(data["source"] == "filtered") & (data["streams"] == streams)].sort_values("threads")
@@ -133,6 +136,40 @@ def plot_appetizer(df_10, df_30):
     plt.tight_layout()
     plt.savefig("plots/latency_by_threads.pdf", bbox_inches="tight")
 
+def plot_csv_json(df_10):
+    _, ax = plt.subplots(figsize=(8, 3.5))
+
+    data = df_10.copy()
+
+    ax.set_axisbelow(True)
+    ax.grid(axis='y')
+    ax.grid(axis='x')
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x/1000:.0f}k" if x > 0 else "0"))
+    ax.set_xlim(0, 65)
+    ax.tick_params(axis='both', length=0)
+    
+    factor = 3 * 22 * 3600
+    subset = data[(data["source"] == "csv") & (data["streams"] == 3)].sort_values("threads")
+    ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="s", color=COLOR_CSV, 
+            label="CSV files", markersize=4)
+    
+    subset = data[(data["source"] == "json") & (data["streams"] == 3)].sort_values("threads")
+    ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="o", color=COLOR_JSON, 
+            label="JSON files", markersize=4)
+    
+    ax.set_xlabel("Number of threads", fontweight="bold")
+    ticks = sorted(data["threads"].unique())
+    ticks = [t for t in ticks if t == 1 or t % 8 == 0]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(ticks)
+    ax.set_ylabel("Queries / h", fontweight="bold")
+
+    # Single shared legend on top
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.2), ncol=3, frameon=False, prop={'weight': 'bold'})
+    
+    plt.tight_layout()
+    plt.savefig("plots/csv_json.pdf", bbox_inches="tight")
+
 def main():
     # Queries plots
     queries_data = []
@@ -163,6 +200,18 @@ def main():
     throughput_df_30 = pd.DataFrame(throughput_data_30)
 
     plot_appetizer(throughput_df_10, throughput_df_30)
+
+    # CSV and JSON plot
+    throughput_data_10 = []
+
+    for filepath in glob.glob(os.path.join("measurements", "throughput", "other-10", "*.json")):
+        with open(filepath, "r") as f:
+            this_data = json.load(f) # each file contains a JSON object
+            throughput_data_10.append(this_data)
+    
+    throughput_df_10 = pd.DataFrame(throughput_data_10)
+
+    plot_csv_json(throughput_df_10)
 
 if __name__ == "__main__":
     os.makedirs("plots", exist_ok=True)

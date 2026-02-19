@@ -223,6 +223,8 @@ int main(int argc, char* argv[]) {
     setup_con.Query("LOAD 'extension/build/release/extension/view_rewriter/view_rewriter.duckdb_extension'");
     
     // Load data
+    setup_con.Query("INSTALL json; LOAD json");
+
     std::cout << "Loading data..." << std::endl;
     load_data(setup_con, config.data_dir, config.source);
 
