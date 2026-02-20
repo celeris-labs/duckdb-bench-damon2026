@@ -2,7 +2,7 @@ import duckdb
 from pathlib import Path
 import argparse
 
-def generate_tpch_parquet(output_dir: str = "data/tpch", format: str = "parquet", scale_factor: int = 1, sorted: bool = False):
+def generate_tpch_parquet(output_dir: str = "data/tpch", format: str = "parquet", scale_factor: int = 1, ordering: str = "default"):
     """
     Generate TPC-H data and write each table to a Parquet file.
     
@@ -50,8 +50,10 @@ def generate_tpch_parquet(output_dir: str = "data/tpch", format: str = "parquet"
     for table in tables:
         filename = output_path / f"{table}.{format}"
         print(f"Writing {table} to {filename}...")
-        if sorted and table in sort_column:
+        if ordering == "sorted" and table in sort_column:
             con.execute(f"COPY (SELECT * FROM {table} ORDER BY {sort_column[table]}) TO '{filename}' ({copy_options[format]})")
+        elif ordering == "random":
+            con.execute(f"COPY (SELECT * FROM {table} ORDER BY random()) TO '{filename}' ({copy_options[format]})")
         else:
             con.execute(f"COPY {table} TO '{filename}' ({copy_options[format]})")
         
@@ -91,16 +93,15 @@ def main():
         help="Output directory (default: data/tpch-1)"
     )
     parser.add_argument(
-        "-S", "--sorted",
-        action="store_true",
-        default=False,
-        dest="sorted",
-        help="Sort lineitem by l_shipdate and orders by o_orderdate (default: False)"
+        "-O", "--ordering",
+        type=str,
+        default="default",
+        dest="ordering",
+        help="Ordering of the tables. Use 'sorted' to sort lineitem by l_shipdate and orders by o_orderdate or 'random' for a random permutation. (default: 'default')"
     )
     
     args = parser.parse_args()
-    generate_tpch_parquet(scale_factor=args.scale_factor, format=args.format, output_dir=args.output_dir, sorted=args.sorted)
-
+    generate_tpch_parquet(scale_factor=args.scale_factor, format=args.format, output_dir=args.output_dir, ordering=args.ordering)
 
 if __name__ == "__main__":
     main()
