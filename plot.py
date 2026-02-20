@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager
 import numpy as np
 from matplotlib.ticker import FuncFormatter
+from matplotlib.patches import Patch
 
 for font_file in glob.glob("resources/*.ttf"):
     font_manager.fontManager.addfont(font_file)
@@ -50,7 +51,7 @@ def plot_cpu_time(df):
     pivot["decode_pct"] = ((pivot["parquet"] - pivot["memory"]) / pivot["parquet"]) * 100
     pivot["query_pct"] = (pivot["filtered"] / pivot["parquet"]) * 100
 
-    _, ax = plt.subplots(figsize=(8, 3.5))
+    _, ax = plt.subplots(figsize=(8, 3.25))
 
     ax.set_axisbelow(True)
     ax.grid(axis='y')
@@ -62,9 +63,9 @@ def plot_cpu_time(df):
     x = np.arange(len(pivot.index))
     width = 0.5
 
-    ax.bar(x, [100 for _ in range(len(pivot.index))], width, label="Remaining query", color=COLOR_QUERY)
-    ax.bar(x, pivot["filter_pct"], width, bottom=pivot["decode_pct"], label="Filtering", color=COLOR_FILTERED)
     ax.bar(x, pivot["decode_pct"], width, label="Parquet decoding", color=COLOR_DECODE)
+    ax.bar(x, pivot["filter_pct"], width, bottom=pivot["decode_pct"], label="Filtering", color=COLOR_FILTERED)
+    ax.bar(x, [100 for _ in range(len(pivot.index))], width, bottom=pivot["decode_pct"] + pivot["filter_pct"], label="Remaining query", color=COLOR_QUERY)
 
     avg_query = 100.0 - pivot["query_pct"].mean()
     avg_decode = pivot["decode_pct"].mean()
@@ -76,15 +77,15 @@ def plot_cpu_time(df):
 
     ax.set_xticks(x)
     ax.set_xticklabels(pivot.index, rotation=90)
-    ax.set_xlabel("TPC-H Query", fontweight="bold")
-    ax.set_ylabel("CPU Time (%)", fontweight="bold")
-    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=3, frameon=False, prop={'weight': 'bold'})
+    ax.set_xlabel("TPC-H query", fontweight="bold")
+    ax.set_ylabel("CPU time (%)", fontweight="bold")
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=3, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
 
     plt.tight_layout()
     plt.savefig("plots/cpu_time_stacked.pdf", bbox_inches="tight")
 
 def plot_appetizer(df_10, df_30):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 3.5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 3.25))
     
     for ax, data, sf, label, streams in [(ax1, df_10.copy(), 10, "a", 3), (ax2, df_30.copy(), 30, "b", 4)]:
         ax.set_axisbelow(True)
@@ -131,42 +132,106 @@ def plot_appetizer(df_10, df_30):
 
     # Single shared legend on top
     handles, labels = ax1.get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 1.08), ncol=3, frameon=False, prop={'weight': 'bold'})
+    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 1.07), ncol=3, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
     
     plt.tight_layout()
     plt.savefig("plots/latency_by_threads.pdf", bbox_inches="tight")
 
-def plot_csv_json(df_10):
-    _, ax = plt.subplots(figsize=(8, 3.5))
+def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
+    _, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 3.75), gridspec_kw={'width_ratios': [0.4, 0.6]})
 
-    data = df_10.copy()
+    for i, ax, df, title in [(0, ax1, df_10, "(a) CSV & JSON parsing"), (1, ax2, (df_10_unsorted, df_10_sorted), "(b) Parquet input ordering & row group pruning")]:
+        ax.set_axisbelow(True)
+        ax.grid(axis='y')
+        ax.grid(axis='x')
 
-    ax.set_axisbelow(True)
-    ax.grid(axis='y')
-    ax.grid(axis='x')
-    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x/1000:.0f}k" if x > 0 else "0"))
-    ax.set_xlim(0, 65)
-    ax.tick_params(axis='both', length=0)
-    
-    factor = 3 * 22 * 3600
-    subset = data[(data["source"] == "csv") & (data["streams"] == 3)].sort_values("threads")
-    ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="s", color=COLOR_CSV, 
-            label="CSV files", markersize=4)
-    
-    subset = data[(data["source"] == "json") & (data["streams"] == 3)].sort_values("threads")
-    ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="o", color=COLOR_JSON, 
-            label="JSON files", markersize=4)
-    
-    ax.set_xlabel("Number of threads", fontweight="bold")
-    ticks = sorted(data["threads"].unique())
-    ticks = [t for t in ticks if t == 1 or t % 8 == 0]
-    ax.set_xticks(ticks)
-    ax.set_xticklabels(ticks)
-    ax.set_ylabel("Queries / h", fontweight="bold")
+        if i == 0:
+            data = df.copy()
 
-    # Single shared legend on top
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.2), ncol=3, frameon=False, prop={'weight': 'bold'})
+            ax.set_ylim(0, 4000)
+
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x/1000:.0f}k" if x > 0 else "0"))
+            ax.set_xlim(0, 65)
+            ax.tick_params(axis='both', length=0)
+            
+            factor = 3 * 22 * 3600
+            subset = data[(data["source"] == "csv") & (data["streams"] == 3)].sort_values("threads")
+            ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="s", color=COLOR_CSV, 
+                    label="CSV files", markersize=2)
+            
+            subset = data[(data["source"] == "json") & (data["streams"] == 3)].sort_values("threads")
+            ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="o", color=COLOR_JSON, 
+                    label="JSON files", markersize=2)
+            
+            ax.set_xlabel("Number of threads", fontweight="bold")
+            ticks = sorted(data["threads"].unique())
+            ticks = [t for t in ticks if t == 1 or t % 8 == 0]
+            ax.set_xticks(ticks)
+            ax.set_xticklabels(ticks)
+            ax.set_ylabel("Queries / h", fontweight="bold")
+
+            ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.2), ncol=3, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
+        else:
+            data_unsorted = df[0].copy()
+            data_sorted = df[1].copy()
+            ax.tick_params(axis='both', length=0)
+            ax.set_ylim(0, 100)
+            ax.grid(axis='x', visible=False)
+            
+            data_unsorted = data_unsorted[(data_unsorted["source"] == "parquet") & (data_unsorted["threads"] == 1)]
+            data_sorted = data_sorted[(data_sorted["source"] == "parquet") & (data_sorted["threads"] == 1)]
+
+            data_unsorted["query_label"] = data_unsorted["query"].str.extract(r'q(\d+)\.sql')[0].astype(int).apply(lambda x: f"Q{x}")
+            data_sorted["query_label"] = data_sorted["query"].str.extract(r'q(\d+)\.sql')[0].astype(int).apply(lambda x: f"Q{x}")
     
+            keep = ["Q1", "Q3", "Q4", "Q6", "Q7", "Q10", "Q14", "Q15", "Q18", "Q20", "Q21"]
+
+            data_unsorted = data_unsorted[data_unsorted["query_label"].isin(keep)].sort_values("query")
+            data_sorted = data_sorted[data_sorted["query_label"].isin(keep)].sort_values("query")
+
+            queries = data_unsorted.sort_values("query")["query_label"].values
+
+            ax.set_xlim(-.5, len(queries) - .5)
+
+            bar_width = 0.25
+
+            for idx, (label, data) in enumerate([("U", data_unsorted), ("Sorted", data_sorted)]):
+                data = data.sort_values("query")
+                scan = data["operators"].apply(lambda o: o["scan"]).values
+                filt = data["operators"].apply(lambda o: o["filter"]).values
+                scan_filter = scan + filt
+                rest = data["runtime_sec"].values - scan_filter
+
+                if idx == 0:
+                    # Compute max runtime per query across both datasets
+                    sorted_tmp = data_sorted.sort_values("query")
+                    max_runtime = np.maximum(data["runtime_sec"].values, sorted_tmp["runtime_sec"].values)
+                # Normalize
+                scan_filter = scan_filter / max_runtime * 100
+                rest = rest / max_runtime * 100
+
+                x = np.arange(len(queries))
+                
+                offset = idx * (bar_width + 0.05) - (bar_width + 0.05) / 2
+
+                hatch = '////' if label == "Sorted" else None
+                ax.bar(x + offset, scan_filter, bar_width, label=f"Scan", color=COLOR_DECODE, hatch=hatch, edgecolor='#3A3A3C', linewidth=0)
+                ax.bar(x + offset, rest, bar_width, bottom=scan_filter, label=f"Rest", color=COLOR_QUERY, hatch=hatch, edgecolor='#3A3A3C', linewidth=0)
+
+            ax.set_xlabel("TPC-H query", fontweight="bold")
+            ax.set_xticks(np.arange(len(queries)))
+            ax.set_xticklabels(queries)
+            ax.set_ylabel("Relative runtime (%)", fontweight="bold")
+
+            legend_handles = [
+                Patch(facecolor=COLOR_DECODE, label='Scan'),
+                Patch(facecolor=COLOR_QUERY, label='Rest'),
+                Patch(facecolor='white', edgecolor='#3A3A3C', linewidth=1, label='Unsorted'),
+                Patch(facecolor='white', edgecolor='#3A3A3C', linewidth=1, hatch='/////', label='Sorted'),
+            ]
+            ax.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.2), ncol=4, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
+        ax.set_title(title, fontsize=12, y=-0.4)
+
     plt.tight_layout()
     plt.savefig("plots/csv_json.pdf", bbox_inches="tight")
 
@@ -203,15 +268,27 @@ def main():
 
     # CSV and JSON plot
     throughput_data_10 = []
+    unsorted_data_10 = []
+    sorted_data_10 = []
 
     for filepath in glob.glob(os.path.join("measurements", "throughput", "other-10", "*.json")):
         with open(filepath, "r") as f:
             this_data = json.load(f) # each file contains a JSON object
             throughput_data_10.append(this_data)
+    for filepath in glob.glob(os.path.join("measurements", "queries", "tpch-30", "*.json")):
+        with open(filepath, "r") as f:
+            this_data = json.load(f) # each file contains a JSON object
+            unsorted_data_10.extend(this_data)
+    for filepath in glob.glob(os.path.join("measurements", "queries", "tpch-30-sorted", "*.json")):
+        with open(filepath, "r") as f:
+            this_data = json.load(f) # each file contains a JSON object
+            sorted_data_10.extend(this_data)
     
     throughput_df_10 = pd.DataFrame(throughput_data_10)
+    unsorted_df_10 = pd.DataFrame(unsorted_data_10)
+    sorted_df_10 = pd.DataFrame(sorted_data_10)
 
-    plot_csv_json(throughput_df_10)
+    plot_csv_json(throughput_df_10, unsorted_df_10, sorted_df_10)
 
 if __name__ == "__main__":
     os.makedirs("plots", exist_ok=True)
