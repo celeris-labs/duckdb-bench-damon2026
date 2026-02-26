@@ -184,7 +184,7 @@ def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
             data_unsorted["query_label"] = data_unsorted["query"].str.extract(r'q(\d+)\.sql')[0].astype(int).apply(lambda x: f"Q{x}")
             data_sorted["query_label"] = data_sorted["query"].str.extract(r'q(\d+)\.sql')[0].astype(int).apply(lambda x: f"Q{x}")
     
-            keep = ["Q1", "Q3", "Q4", "Q6", "Q7", "Q10", "Q14", "Q15", "Q18", "Q20", "Q21"]
+            keep = ["Q1", "Q2", "Q3", "Q6", "Q7", "Q10", "Q12", "Q14", "Q15", "Q16", "Q20"]
 
             data_unsorted = data_unsorted[data_unsorted["query_label"].isin(keep)].sort_values("query")
             data_sorted = data_sorted[data_sorted["query_label"].isin(keep)].sort_values("query")
@@ -239,7 +239,7 @@ def main():
     # Queries plots
     queries_data = []
 
-    for filepath in glob.glob(os.path.join("measurements", "queries", "tpch-10", "*.json")):
+    for filepath in glob.glob(os.path.join("measurements", "queries", "tpch-30", "*.json")):
         with open(filepath, "r") as f:
             this_data = json.load(f) # each file contains a JSON array of objects
             queries_data.extend(this_data)
@@ -275,7 +275,7 @@ def main():
         with open(filepath, "r") as f:
             this_data = json.load(f) # each file contains a JSON object
             throughput_data_10.append(this_data)
-    for filepath in glob.glob(os.path.join("measurements", "queries", "tpch-30", "*.json")):
+    for filepath in glob.glob(os.path.join("measurements", "queries", "tpch-30-random", "*.json")):
         with open(filepath, "r") as f:
             this_data = json.load(f) # each file contains a JSON object
             unsorted_data_10.extend(this_data)
