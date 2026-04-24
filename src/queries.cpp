@@ -74,7 +74,7 @@ OperatorBreakdown traverse(const duckdb::ProfilingNode &node) {
     auto        cpu_time = info.GetMetricValue<double>(duckdb::MetricsType::OPERATOR_TIMING);
 
     if (type == "HASH_JOIN" || type == "LEFT_DELIM_JOIN" || type == "RIGHT_DELIM_JOIN" ||
-        type == "NESTED_LOOP_JOIN" || type == "CROSS_PRODUCT") {
+        type == "NESTED_LOOP_JOIN" || type == "CROSS_PRODUCT" || type == "PIECEWISE_MERGE_JOIN") {
         stats.join += cpu_time;
     } else if (type == "SEQ_SCAN " || type == "READ_PARQUET " || type == "COLUMN_DATA_SCAN" ||
                type == "DELIM_SCAN" || type == "DUMMY_SCAN") {
@@ -88,7 +88,8 @@ OperatorBreakdown traverse(const duckdb::ProfilingNode &node) {
         stats.aggregation += cpu_time;
     } else if (type == "ORDER_BY" || type == "TOP_N") {
         stats.sort += cpu_time;
-    } else if (type == "CTE" || type == "CTE_SCAN" || type == "UNION") {
+    } else if (type == "CTE" || type == "CTE_SCAN" || type == "UNION" ||
+               type == "STREAMING_LIMIT") {
         stats.other += cpu_time;
     } else if (type == "") {
         // NOP
