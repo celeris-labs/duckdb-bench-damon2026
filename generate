@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+
+import duckdb
+from pathlib import Path
+import argparse
+
+COPY_OPTIONS = {
+    "parquet": "FORMAT PARQUET, COMPRESSION SNAPPY",
+    "csv": "FORMAT CSV",
+    "json": "FORMAT JSON",
+}
+
+TPCH_SORT_COLUMN = {
+    "lineitem": "l_shipdate",
+    "orders": "o_orderdate",
+}
+
+
+def generate_data(benchmark: str, output_dir: str, format: str, scale_factor: float, ordering: str):
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    con = duckdb.connect(database=":memory:")
+
+    if benchmark == "tpch":
+        con.execute("INSTALL tpch")
+        con.execute("LOAD tpch")
+        print(f"Generating TPC-H SF{scale_factor} data...")
+        con.execute(f"CALL dbgen(sf={scale_factor})")
+        sort_column = TPCH_SORT_COLUMN
+    else:
+        con.execute("INSTALL tpcds")
+        con.execute("LOAD tpcds")
+        print(f"Generating TPC-DS SF{scale_factor} data...")
+        con.execute(f"CALL dsdgen(sf={scale_factor})")
+        sort_column = {}
+
+    tables = [
+        row[0] for row in con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='main' ORDER BY table_name"
+        ).fetchall()
+    ]
+
+    for table in tables:
+        filename = output_path / f"{table}.{format}"
+        print(f"Writing {table} to {filename}...")
+        if ordering == "sorted" and table in sort_column:
+            con.execute(f"COPY (SELECT * FROM {table} ORDER BY {sort_column[table]}) TO '{filename}' ({COPY_OPTIONS[format]})")
+        elif ordering == "random":
+            con.execute(f"COPY (SELECT * FROM {table} ORDER BY random()) TO '{filename}' ({COPY_OPTIONS[format]})")
+        else:
+            con.execute(f"COPY {table} TO '{filename}' ({COPY_OPTIONS[format]})")
+
+        row_count = con.execute(f"SELECT COUNT(*) FROM '{filename}'").fetchone()[0]
+        print(f"  -> {row_count:,} rows")
+
+    con.close()
+    print(f"\nDone! Files written to {output_path.absolute()}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate TPC-H or TPC-DS data and export to files using DuckDB.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "-b", "--benchmark",
+        choices=["tpch", "tpcds"],
+        default="tpch",
+        help="Benchmark to generate data for (default: tpch)",
+    )
+    parser.add_argument(
+        "-s", "--scale-factor",
+        type=float,
+        default=1,
+        dest="scale_factor",
+        metavar="SF",
+        help="Scale factor (default: 1)",
+    )
+    parser.add_argument(
+        "-f", "--format",
+        type=str,
+        default="parquet",
+        dest="format",
+        choices=["parquet", "csv", "json"],
+        help="Output format (default: parquet)",
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        dest="output_dir",
+        metavar="DIR",
+        help="Output directory (default: data/<benchmark>-<sf>)",
+    )
+    parser.add_argument(
+        "-O", "--ordering",
+        type=str,
+        default="default",
+        dest="ordering",
+        choices=["default", "sorted", "random"],
+        help="Row ordering: 'sorted' sorts fact tables by date, 'random' shuffles all rows (default: 'default')",
+    )
+
+    args = parser.parse_args()
+
+    sf = int(args.scale_factor) if args.scale_factor == int(args.scale_factor) else args.scale_factor
+    output_dir = args.output_dir or f"data/{args.benchmark}-{str(sf).replace('.', '')}"
+    generate_data(
+        benchmark=args.benchmark,
+        scale_factor=args.scale_factor,
+        format=args.format,
+        output_dir=output_dir,
+        ordering=args.ordering,
+    )
+
+
+if __name__ == "__main__":
+    main()
