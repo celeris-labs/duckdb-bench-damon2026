@@ -5,13 +5,19 @@ This is the benchmarking code used to get the results presented in the short pap
 git submodule update --init --recursive
 ```
 
-## Building the benchmark
+## Building the benchmark & extension
 To build the benchmark:
 ``` bash
 mkdir build && cd build
 cmake ..
 make -j 64
 cd ..
+```
+
+To build the DuckDB ViewRewriter extension:
+```bash
+cd extension
+make
 ```
 
 ## Getting the data
