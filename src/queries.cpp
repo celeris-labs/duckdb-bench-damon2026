@@ -138,8 +138,9 @@ std::vector<QueryResult> run_benchmark(const Config                &config,
 
     con.Query("SET threads TO " + std::to_string(config.threads));
 
-    // Enable profiling
+    // Enable profiling for all operator types
     con.Query("PRAGMA enable_profiling='no_output'");
+    con.Query("PRAGMA profiling_coverage='ALL'");
 
     Timer timer;
 
@@ -166,12 +167,15 @@ std::vector<QueryResult> run_benchmark(const Config                &config,
                 throw std::runtime_error("Query error: " + r->GetError());
             }
 
-            // Materialize results
-            r->Fetch();
+            // Materialize results (must drain fully before profiling tree is available)
+            while (r->Fetch()) {}
             double elapsed = timer.stop_seconds();
 
             // Get statistics
             auto profiling_tree = con.GetProfilingTree();
+            if (!profiling_tree) {
+                throw std::runtime_error("Profiling tree is null for query: " + query_path.string());
+            }
             auto profiling_info = profiling_tree->GetProfilingInfo();
 
             Statistics stat;
