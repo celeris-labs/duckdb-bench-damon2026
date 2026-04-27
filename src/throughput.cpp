@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
     Config config = parse_args(argc, argv);
 
     // Get queries based on benchmark and source
-    std::vector<fs::path>    query_paths = get_queries(config.benchmark, config.source);
+    std::vector<fs::path>    query_paths = get_queries(config.benchmark);
     std::vector<std::string> queries;
     for (const auto &query_path : query_paths) {
         std::ifstream f(query_path);
@@ -222,7 +222,7 @@ int main(int argc, char *argv[]) {
     setup_con.Query(
         "LOAD 'extension/build/release/extension/view_rewriter/view_rewriter.duckdb_extension'");
 
-    // Load data
+    // Load data (also sets view_rewriter_auto_materialize and runs warm-up if needed)
     setup_con.Query("INSTALL json; LOAD json");
 
     std::cout << "Loading data..." << std::endl;

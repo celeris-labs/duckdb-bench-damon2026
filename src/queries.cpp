@@ -131,7 +131,7 @@ std::vector<QueryResult> run_benchmark(const Config                &config,
     con.Query(
         "LOAD 'extension/build/release/extension/view_rewriter/view_rewriter.duckdb_extension'");
 
-    // Load data
+    // Load data (also sets view_rewriter_auto_materialize and runs warm-up if needed)
     load_data(con, config.data_dir, config.benchmark, config.source);
 
     con.Query("SELECT * FROM view_rewriter_stats()");
@@ -312,7 +312,7 @@ int main(int argc, char *argv[]) {
     Config config = parse_args(argc, argv);
 
     // Get queries based on benchmark and source
-    std::vector<fs::path> query_paths = get_queries(config.benchmark, config.source);
+    std::vector<fs::path> query_paths = get_queries(config.benchmark);
 
     auto results = run_benchmark(config, query_paths);
 

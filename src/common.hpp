@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 
 #include <duckdb.hpp>
@@ -96,20 +97,8 @@ class Timer {
 // Data Loading
 // ============================================================================
 
-std::vector<fs::path> get_queries(Benchmark benchmark, Source source) {
-    std::string query_dir;
-    switch (benchmark) {
-    case Benchmark::TPCH:
-        query_dir =
-            (source == Source::PROJECTED) ? "sql/tpch/projected_queries/" : "sql/tpch/queries/";
-        break;
-    case Benchmark::TPCDS:
-        query_dir = "sql/tpcds/";
-        break;
-    case Benchmark::CLICKBENCH:
-        query_dir = "sql/clickbench/";
-        break;
-    }
+std::vector<fs::path> get_queries(Benchmark benchmark) {
+    fs::path query_dir = fs::path("queries") / benchmark_to_string(benchmark);
 
     std::vector<fs::path> queries;
     if (fs::exists(query_dir)) {
@@ -124,29 +113,13 @@ std::vector<fs::path> get_queries(Benchmark benchmark, Source source) {
     return queries;
 }
 
-void load_views(duckdb::Connection &con, const std::string &dir_path, const std::string &data_dir) {
-    for (const auto &entry : fs::directory_iterator(dir_path)) {
-        std::ifstream f(entry.path());
-        std::string   sql((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-
-        // Replace hardcoded data path with configured data_dir
-        size_t pos;
-        while ((pos = sql.find("data/tpch")) != std::string::npos) {
-            sql.replace(pos, 9, data_dir);
-        }
-
-        auto r = con.Query(sql);
-        if (r->HasError()) {
-            throw std::runtime_error("Failed to load view: " + r->GetError());
-        }
-    }
-}
-
-void load_data(duckdb::Connection &con, const std::string &data_dir, Benchmark benchmark,
-               Source source) {
+void load_data(duckdb::Connection &con, const std::string &data_dir, Benchmark benchmark, Source source) {
     if (!fs::exists(data_dir) || !fs::is_directory(data_dir)) {
         throw std::runtime_error("Data directory does not exist: " + data_dir);
     }
+
+    bool auto_mat = (source == Source::FILTERED || source == Source::PROJECTED);
+    con.Query("SET view_rewriter_auto_materialize TO " + std::string(auto_mat ? "true" : "false"));
 
     // Discover all files in data_dir with the expected extension for this source
     std::string extension;
@@ -197,7 +170,7 @@ void load_data(duckdb::Connection &con, const std::string &data_dir, Benchmark b
             sql = "CREATE VIEW " + table + " AS SELECT *" + replace_cols + " FROM read_json('" +
                   path + "')";
             break;
-        default: // MEMORY, FILTERED, PROJECTED all load into tables
+        default: // MEMORY, FILTERED, PROJECTED load base tables; views are handled by the extension
             sql = "CREATE TABLE " + table + " AS SELECT *" + replace_cols + " FROM read_parquet('" +
                   path + "')";
             break;
@@ -209,15 +182,15 @@ void load_data(duckdb::Connection &con, const std::string &data_dir, Benchmark b
         }
     }
 
-    // TPC-H specific views
-    if (benchmark == Benchmark::TPCH) {
-        if (source == Source::FILTERED) {
-            load_views(con, "sql/tpch/filtered_views", data_dir);
+    if (auto_mat) {
+        std::cout << "Warming up: running all queries to auto-generate materialized views..."
+                  << std::endl;
+        for (const auto &query_path : get_queries(benchmark)) {
+            std::ifstream f(query_path);
+            std::string   sql((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            con.Query(sql); // ignore errors; warm-up only
         }
-        if (source == Source::PROJECTED) {
-            load_views(con, "sql/tpch/filtered_views", data_dir);
-            load_views(con, "sql/tpch/projected_views", data_dir);
-        }
+        std::cout << "Warm-up complete." << std::endl;
     }
 }
 
