@@ -2,6 +2,8 @@ import json
 import glob
 import os
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 import numpy as np
@@ -12,19 +14,21 @@ for font_file in glob.glob("resources/*.ttf"):
     font_manager.fontManager.addfont(font_file)
 plt.rcParams["font.family"] = "Inter 18pt"
 
+TEXT_COLOR = "black" # "#3A3A3C"
+
 # --- Plot ---
 plt.rcParams.update({
-    "grid.linestyle": "-",
+    "grid.linestyle": ":",
     "grid.alpha": 1.0,
-    "grid.color": "#E5E5EA",
+    "grid.color": "black",
     "font.size": 12,
     "axes.spines.right": False,
     "axes.spines.left": False,
-    "axes.edgecolor": "#E5E5EA",
-    "text.color": "#3A3A3C",
-    "axes.labelcolor": "#3A3A3C",
-    "xtick.color": "#3A3A3C",
-    "ytick.color": "#3A3A3C",
+    "axes.edgecolor": "black",
+    "text.color": TEXT_COLOR,
+    "axes.labelcolor": TEXT_COLOR,
+    "xtick.color": TEXT_COLOR,
+    "ytick.color": TEXT_COLOR,
 })
 
 COLOR_QUERY = "#5E81AC"
@@ -34,54 +38,88 @@ COLOR_FILTERED = "#A3BE8C"
 COLOR_CSV = "#D08770"
 COLOR_JSON = "#B48EAD"
 
-def plot_cpu_time(df):
+def _cpu_time_subplot(ax, df, benchmark):
     data = df.copy()
     data = data[data["threads"] == 1]
 
-    # Extract short query names: q01.sql -> Q1, q02.sql -> Q2, etc.
-    data["query_label"] = data["query"].str.extract(r'q(\d+)\.sql')[0].astype(int).apply(lambda x: f"Q{x}")
+    if benchmark == "tpch":
+        data["query_label"] = data["query"].str.extract(r'q(\d+)\.sql')[0].astype(int).apply(lambda x: f"Q{x}")
+    else:
+        data["query_label"] = data["query"].str.extract(r'(\d+)\.sql')[0].astype(int).apply(lambda x: f"Q{x}")
 
-    # Pivot to get parquet and memory side by side
     pivot = data.pivot_table(index="query_label", columns="source", values="cpu_time_sec")
     pivot = pivot.loc[sorted(pivot.index, key=lambda s: int(s[1:]))]
 
-    # The "memory" portion is the base (compute time on in-memory data)
-    # The "parquet" overhead is the difference: parquet - memory (decoding cost)
-    pivot["filter_pct"] = ((pivot["memory"] - pivot["filtered"]) / pivot["parquet"]) * 100
+    filtered_clamped = pivot["filtered"].clip(upper=pivot["memory"])
+    pivot["filter_pct"] = ((pivot["memory"] - filtered_clamped) / pivot["parquet"]) * 100
+    pivot["query_pct"] = (filtered_clamped / pivot["parquet"]) * 100
     pivot["decode_pct"] = ((pivot["parquet"] - pivot["memory"]) / pivot["parquet"]) * 100
-    pivot["query_pct"] = (pivot["filtered"] / pivot["parquet"]) * 100
 
-    _, ax = plt.subplots(figsize=(8, 3.25))
+    # When parquet cpu time < memory, decode_pct is negative; clamp both decode and filter to 0
+    # so the remaining query bar fills the full 100%.
+    parquet_lt_memory = pivot["decode_pct"] < 0
+    pivot.loc[parquet_lt_memory, "decode_pct"] = 0
+    pivot.loc[parquet_lt_memory, "filter_pct"] = 0
+    # filter_pct can also go negative independently (filtered > memory due to noise); clamp it too.
+    pivot.loc[pivot["filter_pct"] < 0, "filter_pct"] = 0
+
+    # Exclude queries where parquet ≈ 0 (clamped rows) from averages — they produce huge query_pct outliers.
+    valid = ~parquet_lt_memory
 
     ax.set_axisbelow(True)
     ax.grid(axis='y')
     ax.grid(axis='x', visible=False)
     ax.set_ylim(0, 100)
-    ax.set_xlim(-0.8, len(pivot.index) + 1.0)
-    ax.tick_params(axis='both', length=0)
+    xlim_multiplier = {"tpch": 1.6, "clickbench": 1.3, "tpcds": 2.2}
+    ax.set_xlim(-0.4 * xlim_multiplier[benchmark], len(pivot.index) + 1.0 * xlim_multiplier[benchmark])
+    ax.tick_params(axis='y', length=0)
 
     x = np.arange(len(pivot.index))
-    width = 0.5
+    width = 0.65
 
-    ax.bar(x, pivot["decode_pct"], width, label="Parquet decoding", color=COLOR_DECODE)
-    ax.bar(x, pivot["filter_pct"], width, bottom=pivot["decode_pct"], label="Filtering", color=COLOR_FILTERED)
-    ax.bar(x, [100 for _ in range(len(pivot.index))], width, bottom=pivot["decode_pct"] + pivot["filter_pct"], label="Remaining query", color=COLOR_QUERY)
+    ax.bar(x, pivot["decode_pct"], width, label="Parquet decoding", color=COLOR_DECODE, edgecolor="black", linewidth=0.5)
+    ax.bar(x, pivot["filter_pct"], width, bottom=pivot["decode_pct"], label="Filtering", color=COLOR_FILTERED, edgecolor="black", linewidth=0.5)
+    ax.bar(x, [100 for _ in range(len(pivot.index))], width, bottom=pivot["decode_pct"] + pivot["filter_pct"], label="Remaining query", color=COLOR_QUERY, edgecolor="black", linewidth=0.5)
 
-    avg_query = 100.0 - pivot["query_pct"].mean()
-    avg_decode = pivot["decode_pct"].mean()
+    avg_query = 100.0 - pivot.loc[valid, "query_pct"].mean()
+    avg_decode = pivot.loc[valid, "decode_pct"].mean()
     ax.axhline(y=avg_query, color=COLOR_FILTERED, linestyle="--", linewidth=1.5)
     ax.axhline(y=avg_decode, color=COLOR_DECODE, linestyle="--", linewidth=1.5)
 
-    ax.text(len(pivot.index) - 0.5, avg_query + 1.5, f"{avg_query:.0f}%", ha="left")
-    ax.text(len(pivot.index) - 0.5, avg_decode + 1.5, f"{avg_decode:.0f}%", ha="left")
+    ax.text(len(pivot.index) - 0.5, avg_query + 3, f"{avg_query:.0f}%", ha="left", bbox=dict(facecolor="white", edgecolor="none", pad=1))
+    ax.text(len(pivot.index) - 0.5, avg_decode - 10, f"{avg_decode:.0f}%", ha="left", bbox=dict(facecolor="white", edgecolor="none", pad=1))
 
     ax.set_xticks(x)
-    ax.set_xticklabels(pivot.index, rotation=90)
-    ax.set_xlabel("TPC-H query", fontweight="bold")
-    ax.set_ylabel("CPU time (%)", fontweight="bold")
-    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=3, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
+    if benchmark == "tpcds":
+        labels = [label if i % 2 == 0 else "" for i, label in enumerate(pivot.index)]
+    else:
+        labels = pivot.index
+    ax.set_xticklabels(labels, rotation=90)
+    benchmark_labels = {"tpch": "TPC-H", "clickbench": "ClickBench", "tpcds": "TPC-DS"}
+    ax.set_xlabel(f"{benchmark_labels.get(benchmark, benchmark)} query", fontweight="bold")
 
-    plt.tight_layout()
+
+def plot_cpu_time(df_tpch, df_clickbench, df_tpcds):
+    fig = plt.figure(figsize=(18, 6))
+    gs = fig.add_gridspec(2, 3, hspace=0.45)
+
+    ax_tpch = fig.add_subplot(gs[0, 0])
+    ax_cb = fig.add_subplot(gs[0, 1:])
+    ax_tpcds = fig.add_subplot(gs[1, :])
+
+    _cpu_time_subplot(ax_tpch, df_tpch, "tpch")
+    _cpu_time_subplot(ax_cb, df_clickbench, "clickbench")
+    _cpu_time_subplot(ax_tpcds, df_tpcds, "tpcds")
+
+    ax_tpch.set_ylabel("CPU time (%)", fontweight="bold")
+    ax_tpcds.set_ylabel("CPU time (%)", fontweight="bold")
+    ax_tpch.set_title("(a) TPC-H", fontsize=12)
+    ax_cb.set_title("(b) ClickBench", fontsize=12)
+    ax_tpcds.set_title("(c) TPC-DS", fontsize=12)
+
+    handles, labels = ax_tpch.get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 0.98), ncol=3, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
+
     plt.savefig("plots/cpu_time_stacked.pdf", bbox_inches="tight")
 
 def plot_appetizer(df_10, df_30):
@@ -93,8 +131,6 @@ def plot_appetizer(df_10, df_30):
         ax.grid(axis='x')
         ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x/1000:.0f}k" if x > 0 else "0"))
         ax.set_xlim(0, 65)
-        ax.tick_params(axis='both', length=0)
-        
         factor = streams * 22 * 3600
         subset = data[(data["source"] == "parquet") & (data["streams"] == streams)].sort_values("threads")
         ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="s", color=COLOR_DECODE, 
@@ -152,8 +188,6 @@ def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
 
             ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x/1000:.0f}k" if x > 0 else "0"))
             ax.set_xlim(0, 65)
-            ax.tick_params(axis='both', length=0)
-            
             factor = 3 * 22 * 3600
             subset = data[(data["source"] == "csv") & (data["streams"] == 3)].sort_values("threads")
             ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="s", color=COLOR_CSV, 
@@ -174,7 +208,6 @@ def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
         else:
             data_unsorted = df[0].copy()
             data_sorted = df[1].copy()
-            ax.tick_params(axis='both', length=0)
             ax.set_ylim(0, 100)
             ax.grid(axis='x', visible=False)
             
@@ -237,16 +270,26 @@ def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
 
 def main():
     # Queries plots
-    queries_data = []
+    tpch_data = []
+    tpcds_data = []
+
+    clickbench_data = []
 
     for filepath in glob.glob(os.path.join("measurements", "queries", "tpch-30", "*.json")):
         with open(filepath, "r") as f:
-            this_data = json.load(f) # each file contains a JSON array of objects
-            queries_data.extend(this_data)
+            tpch_data.extend(json.load(f))
+    for filepath in glob.glob(os.path.join("measurements", "queries", "tpcds-30", "*.json")):
+        with open(filepath, "r") as f:
+            tpcds_data.extend(json.load(f))
+    for filepath in glob.glob(os.path.join("measurements", "queries", "clickbench", "*.json")):
+        with open(filepath, "r") as f:
+            clickbench_data.extend(json.load(f))
 
-    queries_df = pd.DataFrame(queries_data)
+    tpch_df = pd.DataFrame(tpch_data)
+    tpcds_df = pd.DataFrame(tpcds_data)
+    clickbench_df = pd.DataFrame(clickbench_data)
 
-    plot_cpu_time(queries_df)
+    plot_cpu_time(tpch_df, clickbench_df, tpcds_df)
 
     # Throughput plots
     throughput_data_10 = []
@@ -271,7 +314,7 @@ def main():
     unsorted_data_10 = []
     sorted_data_10 = []
 
-    for filepath in glob.glob(os.path.join("measurements", "throughput", "other-10", "*.json")):
+    for filepath in glob.glob(os.path.join("measurements", "throughput", "tpch-other-10", "*.json")):
         with open(filepath, "r") as f:
             this_data = json.load(f) # each file contains a JSON object
             throughput_data_10.append(this_data)
