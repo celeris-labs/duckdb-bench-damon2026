@@ -50,7 +50,7 @@ struct RewriteRule {
 // Extension info: holds registered rewrite rules and statistics
 // ──────────────────────────────────────────────────────────────────────
 struct PendingMaterialization {
-    string      create_sql;
+    string      where_sql;
     RewriteRule rule;
 };
 
@@ -59,13 +59,14 @@ struct ViewRewriterInfo : public OptimizerExtensionInfo {
     idx_t               rewrites_applied = 0;
     bool                verbose          = false;
     bool                auto_materialize = false;
+    double              min_selectivity  = 0.0;
 
     // Pending materializations enqueued during the optimizer pass.
     // Executed after the triggering query completes, on a side connection.
     std::mutex                     pending_mutex;
     vector<PendingMaterialization> pending;
-    // Fingerprints already enqueued (but not yet materialized), to avoid duplicates.
-    unordered_set<string> enqueued_fingerprints;
+    // Fingerprints we have ever seen (enqueued, failed, or skipped). Never retry these.
+    unordered_set<string> seen_fingerprints;
 
     // Held so we can open a side connection for materialization.
     shared_ptr<DatabaseInstance> db;
@@ -94,22 +95,55 @@ struct AutoMaterializeState : public ClientContextState {
         Connection side_con(*info.db);
 
         for (auto &pm : work) {
-            if (info.verbose) {
-                Printer::Print("  Auto-materializing: " + pm.create_sql);
+            // Compute selectivity: count(filtered) / count(table)
+            auto table_count_result =
+                side_con.Query("SELECT count(*) FROM " + pm.rule.source_table);
+            auto view_count_result = side_con.Query("SELECT count(*) FROM " + pm.rule.source_table +
+                                                    " WHERE " + pm.where_sql);
+            double selectivity     = 1.0;
+            if (!table_count_result->HasError() && !view_count_result->HasError()) {
+                auto table_row = table_count_result->Fetch();
+                auto view_row  = view_count_result->Fetch();
+                if (table_row && view_row) {
+                    idx_t table_card = table_row->GetValue(0, 0).GetValue<idx_t>();
+                    idx_t view_card  = view_row->GetValue(0, 0).GetValue<idx_t>();
+                    selectivity =
+                        table_card > 0 ? 1.0 - (double)view_card / (double)table_card : 1.0;
+                    if (info.verbose) {
+                        Printer::Print("  Selectivity for view '" + pm.rule.replacement_view +
+                                       "': 1 - " + std::to_string(view_card) + " / " +
+                                       std::to_string(table_card) + " = " +
+                                       std::to_string(selectivity));
+                    }
+                }
             }
-            auto result = side_con.Query(pm.create_sql);
+
+            if (selectivity < info.min_selectivity) {
+                if (info.verbose) {
+                    Printer::Print("  Skipping materialization: selectivity " +
+                                   std::to_string(selectivity) + " < " +
+                                   std::to_string(info.min_selectivity));
+                }
+                continue;
+            }
+
+            string create_sql = "CREATE TABLE IF NOT EXISTS " + pm.rule.replacement_view +
+                                " AS SELECT * FROM " + pm.rule.source_table + " WHERE " +
+                                pm.where_sql;
+
+            if (info.verbose) {
+                Printer::Print("  Auto-materializing: " + create_sql);
+            }
+            auto result = side_con.Query(create_sql);
             if (result->HasError()) {
                 if (info.verbose) {
                     Printer::Print("  Auto-materialize failed: " + result->GetError());
                 }
-                std::lock_guard<std::mutex> lk(info.pending_mutex);
-                info.enqueued_fingerprints.erase(pm.rule.filter_fingerprint);
                 continue;
             }
             {
                 std::lock_guard<std::mutex> lk(info.pending_mutex);
                 info.rules.push_back(pm.rule);
-                info.enqueued_fingerprints.erase(pm.rule.filter_fingerprint);
             }
             if (info.verbose) {
                 Printer::Print("  Rule already exists and replaces with '" +
@@ -279,8 +313,7 @@ static void CollectPushedDownFilters(vector<string> &column_names, TableFilterSe
 // On a successful rule match, `op` is replaced and the function returns true.
 static bool TryRewriteGet(ClientContext &context, unique_ptr<LogicalOperator> &op, LogicalGet &get,
                           const string &table_name, vector<string> filter_fps,
-                          const string &where_sql, ViewRewriterInfo *info,
-                          const vector<idx_t> &filter_projection_map) {
+                          ViewRewriterInfo *info, const vector<idx_t> &filter_projection_map) {
     sort(filter_fps.begin(), filter_fps.end());
     string combined_fp;
     for (auto &fp : filter_fps) {
@@ -337,7 +370,7 @@ static bool TryRewriteGet(ClientContext &context, unique_ptr<LogicalOperator> &o
             // The filter selects filter_projection_map[i]-th entry from the GET's output.
             // GET output is: projection_ids[j] for each j (or j itself if projection_ids empty).
             if (!filter_projection_map.empty()) {
-                auto &base_proj = get.projection_ids;
+                auto         &base_proj = get.projection_ids;
                 vector<idx_t> folded;
                 folded.reserve(filter_projection_map.size());
                 for (auto pm_idx : filter_projection_map) {
@@ -374,7 +407,7 @@ static bool TryRewriteGet(ClientContext &context, unique_ptr<LogicalOperator> &o
 
     {
         std::lock_guard<std::mutex> lk(info->pending_mutex);
-        if (info->enqueued_fingerprints.count(combined_fp)) {
+        if (info->seen_fingerprints.count(combined_fp)) {
             return false;
         }
 
@@ -383,11 +416,10 @@ static bool TryRewriteGet(ClientContext &context, unique_ptr<LogicalOperator> &o
         pm.rule.filter_fingerprint = combined_fp;
         pm.rule.replacement_view =
             table_name + "_auto_" +
-            std::to_string(info->rules.size() + info->enqueued_fingerprints.size());
-        pm.create_sql = "CREATE TABLE IF NOT EXISTS " + pm.rule.replacement_view +
-                        " AS SELECT * FROM " + table_name + " WHERE " + where_sql;
+            std::to_string(info->rules.size() + info->seen_fingerprints.size());
+        pm.where_sql = combined_fp;
 
-        info->enqueued_fingerprints.insert(combined_fp);
+        info->seen_fingerprints.insert(combined_fp);
         info->pending.push_back(std::move(pm));
     }
 
@@ -426,15 +458,9 @@ static void RewritePlan(ClientContext &context, unique_ptr<LogicalOperator> &op,
             return;
         }
 
-        string where_sql;
-        for (auto &fp : filter_fps) {
-            if (!where_sql.empty())
-                where_sql += " AND ";
-            where_sql += fp;
-        }
-
         // On a match, op is replaced with the new GET (the FILTER node is dropped).
-        TryRewriteGet(context, op, get, table_name, std::move(filter_fps), where_sql, info, filter_op.projection_map);
+        TryRewriteGet(context, op, get, table_name, std::move(filter_fps), info,
+                      filter_op.projection_map);
         return;
     }
 
@@ -463,13 +489,7 @@ static void RewritePlan(ClientContext &context, unique_ptr<LogicalOperator> &op,
             return;
         }
 
-        string where_sql;
-        for (auto &fp : filter_fps) {
-            if (!where_sql.empty())
-                where_sql += " AND ";
-            where_sql += fp;
-        }
-        TryRewriteGet(context, op, get, table_name, std::move(filter_fps), where_sql, info, {});
+        TryRewriteGet(context, op, get, table_name, std::move(filter_fps), info, {});
         return;
     }
 }
@@ -619,6 +639,23 @@ static void LoadInternal(ExtensionLoader &loader) {
             }
         });
 
+    // SET view_rewriter_min_selectivity = 0.0..1.0
+    config.AddExtensionOption(
+        "view_rewriter_min_selectivity",
+        "Minimum selectivity (fraction of rows filtered out) required to materialize a view. "
+        "Views with selectivity below this threshold are skipped.",
+        LogicalType::DOUBLE, Value::DOUBLE(0.0),
+        [](ClientContext &context, SetScope scope, Value &value) {
+            auto &cfg = DBConfig::GetConfig(context);
+            for (auto &ext : cfg.optimizer_extensions) {
+                auto *info = dynamic_cast<ViewRewriterInfo *>(ext.optimizer_info.get());
+                if (info) {
+                    info->min_selectivity = value.GetValue<double>();
+                    break;
+                }
+            }
+        });
+
     // SET view_rewriter_auto_materialize = true/false
     config.AddExtensionOption("view_rewriter_auto_materialize",
                               "Automatically materialize filter sub-expressions as in-memory "
@@ -652,7 +689,5 @@ std::string ViewRewriterExtension::Version() const {
 } // namespace duckdb
 
 extern "C" {
-
 DUCKDB_CPP_EXTENSION_ENTRY(view_rewriter, loader) { duckdb::LoadInternal(loader); }
-
 }

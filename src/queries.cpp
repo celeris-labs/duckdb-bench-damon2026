@@ -135,6 +135,9 @@ std::vector<QueryResult> run_benchmark(const Config                &config,
     if (config.verbose) {
         con.Query("SET view_rewriter_verbose TO true");
     }
+    if (config.benchmark == Benchmark::CLICKBENCH) {
+        con.Query("SET view_rewriter_min_selectivity TO 0.2");
+    }
 
     // Load data (also sets view_rewriter_auto_materialize and runs warm-up if needed)
     std::cout << "Loading data..." << std::endl;
