@@ -100,7 +100,7 @@ def _cpu_time_subplot(ax, df, benchmark):
 
 
 def plot_cpu_time(df_tpch, df_clickbench, df_tpcds):
-    fig = plt.figure(figsize=(18, 6))
+    fig = plt.figure(figsize=(16, 6))
     gs = fig.add_gridspec(2, 3, hspace=0.45)
 
     ax_tpch = fig.add_subplot(gs[0, 0])
@@ -174,7 +174,7 @@ def plot_appetizer(df_10, df_30):
     plt.savefig("plots/latency_by_threads.pdf", bbox_inches="tight")
 
 def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
-    _, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 3.75), gridspec_kw={'width_ratios': [0.4, 0.6]})
+    _, (ax1, ax2) = plt.subplots(1, 2, figsize=(7, 3.75), gridspec_kw={'width_ratios': [0.4, 0.6]})
 
     for i, ax, df, title in [(0, ax1, df_10, "(a) CSV & JSON parsing"), (1, ax2, (df_10_unsorted, df_10_sorted), "(b) Parquet input ordering & row group pruning")]:
         ax.set_axisbelow(True)
@@ -204,7 +204,7 @@ def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
             ax.set_xticklabels(ticks)
             ax.set_ylabel("Queries / h", fontweight="bold")
 
-            ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.2), ncol=3, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
+            ax.legend(loc="upper center", bbox_to_anchor=(0.42, 1.225), ncol=3, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
         else:
             data_unsorted = df[0].copy()
             data_sorted = df[1].copy()
@@ -226,7 +226,7 @@ def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
 
             ax.set_xlim(-.5, len(queries) - .5)
 
-            bar_width = 0.25
+            bar_width = 0.3
 
             for idx, (label, data) in enumerate([("U", data_unsorted), ("Sorted", data_sorted)]):
                 data = data.sort_values("query")
@@ -245,25 +245,25 @@ def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
 
                 x = np.arange(len(queries))
                 
-                offset = idx * (bar_width + 0.05) - (bar_width + 0.05) / 2
+                offset = idx * (bar_width + 0.075) - (bar_width + 0.075) / 2
 
                 hatch = '////' if label == "Sorted" else None
-                ax.bar(x + offset, scan_filter, bar_width, label=f"Scan", color=COLOR_DECODE, hatch=hatch, edgecolor='#3A3A3C', linewidth=0)
-                ax.bar(x + offset, rest, bar_width, bottom=scan_filter, label=f"Rest", color=COLOR_QUERY, hatch=hatch, edgecolor='#3A3A3C', linewidth=0)
+                ax.bar(x + offset, scan_filter, bar_width, label=f"Scan", color=COLOR_DECODE, hatch=hatch, edgecolor="black", linewidth=0.5)
+                ax.bar(x + offset, rest, bar_width, bottom=scan_filter, label=f"Rest", color=COLOR_QUERY, hatch=hatch, edgecolor="black", linewidth=0.5)
 
             ax.set_xlabel("TPC-H query", fontweight="bold")
             ax.set_xticks(np.arange(len(queries)))
-            ax.set_xticklabels(queries)
+            ax.set_xticklabels(queries, rotation=90)
             ax.set_ylabel("Relative runtime (%)", fontweight="bold")
 
             legend_handles = [
                 Patch(facecolor=COLOR_DECODE, label='Scan'),
                 Patch(facecolor=COLOR_QUERY, label='Rest'),
-                Patch(facecolor='white', edgecolor='#3A3A3C', linewidth=1, label='Unsorted'),
-                Patch(facecolor='white', edgecolor='#3A3A3C', linewidth=1, hatch='/////', label='Sorted'),
+                Patch(facecolor='white', edgecolor="black", linewidth=1, label='Unsorted'),
+                Patch(facecolor='white', edgecolor="black", linewidth=1, hatch='/////', label='Sorted'),
             ]
-            ax.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.2), ncol=4, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
-        ax.set_title(title, fontsize=12, y=-0.4)
+            ax.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.42, 1.225), ncol=4, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
+        ax.set_title(title, fontsize=12, y=1.175, x=0.42)
 
     plt.tight_layout()
     plt.savefig("plots/csv_json.pdf", bbox_inches="tight")
