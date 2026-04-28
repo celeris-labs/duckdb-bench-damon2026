@@ -231,6 +231,9 @@ int main(int argc, char *argv[]) {
     if (config.verbose) {
         setup_con.Query("SET view_rewriter_verbose TO true");
     }
+    if (config.benchmark == Benchmark::CLICKBENCH) {
+        setup_con.Query("SET view_rewriter_min_selectivity TO 0.2");
+    }
 
     // Load data (also sets view_rewriter_auto_materialize and runs warm-up if needed)
     setup_con.Query("INSTALL json; LOAD json");
