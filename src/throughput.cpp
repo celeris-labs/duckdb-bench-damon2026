@@ -20,12 +20,13 @@
 // ============================================================================
 
 struct Config {
-    std::string           data_dir  = "/mnt/ramdisk";
-    Benchmark             benchmark = Benchmark::TPCH;
-    Source                source    = Source::PARQUET;
+    std::string           data_dir    = "/mnt/ramdisk";
+    Benchmark             benchmark   = Benchmark::TPCH;
+    Source                source      = Source::PARQUET;
     std::vector<uint32_t> threads{1};
     uint32_t              repetitions = 5;
     uint32_t              streams     = 2; // Number of concurrent query streams
+    bool                  verbose     = false;
 };
 
 // ============================================================================
@@ -108,6 +109,7 @@ void print_usage(const char *prog) {
               << "                        list \"1,2,4\", or single value (default: 1)\n"
               << "  -S, --streams N       Number of concurrent query streams (default: 2)\n"
               << "  -d, --data-dir DIR    Data directory (default: /mnt/ramdisk)\n"
+              << "  -v, --verbose         Enable view rewriter verbose output\n"
               << "  -h, --help            Show this help message\n";
 }
 
@@ -120,11 +122,12 @@ Config parse_args(int argc, char *argv[]) {
                                            {"threads", required_argument, 0, 't'},
                                            {"streams", required_argument, 0, 'S'},
                                            {"data-dir", required_argument, 0, 'd'},
+                                           {"verbose", no_argument, 0, 'v'},
                                            {"help", no_argument, 0, 'h'},
                                            {0, 0, 0, 0}};
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "b:s:r:t:S:d:h", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "b:s:r:t:S:d:vh", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'b':
             config.benchmark = string_to_benchmark(optarg);
@@ -149,6 +152,9 @@ Config parse_args(int argc, char *argv[]) {
             break;
         case 'd':
             config.data_dir = optarg;
+            break;
+        case 'v':
+            config.verbose = true;
             break;
         case 'h':
             print_usage(argv[0]);
@@ -221,6 +227,10 @@ int main(int argc, char *argv[]) {
     // Load view rewriter extension
     setup_con.Query(
         "LOAD 'extension/build/release/extension/view_rewriter/view_rewriter.duckdb_extension'");
+
+    if (config.verbose) {
+        setup_con.Query("SET view_rewriter_verbose TO true");
+    }
 
     // Load data (also sets view_rewriter_auto_materialize and runs warm-up if needed)
     setup_con.Query("INSTALL json; LOAD json");

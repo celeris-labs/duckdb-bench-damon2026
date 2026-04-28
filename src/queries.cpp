@@ -23,6 +23,7 @@ struct Config {
     Source      source      = Source::PARQUET;
     int         threads     = 1;
     int         repetitions = 5;
+    bool        verbose     = false;
 };
 
 // ============================================================================
@@ -131,10 +132,13 @@ std::vector<QueryResult> run_benchmark(const Config                &config,
     con.Query(
         "LOAD 'extension/build/release/extension/view_rewriter/view_rewriter.duckdb_extension'");
 
-    // Load data (also sets view_rewriter_auto_materialize and runs warm-up if needed)
-    load_data(con, config.data_dir, config.benchmark, config.source);
+    if (config.verbose) {
+        con.Query("SET view_rewriter_verbose TO true");
+    }
 
-    con.Query("SELECT * FROM view_rewriter_stats()");
+    // Load data (also sets view_rewriter_auto_materialize and runs warm-up if needed)
+    std::cout << "Loading data..." << std::endl;
+    load_data(con, config.data_dir, config.benchmark, config.source);
 
     con.Query("SET threads TO " + std::to_string(config.threads));
 
@@ -214,6 +218,7 @@ void print_usage(const char *prog) {
               << "  -r, --repetitions N   Number of repetitions per query (default: 5)\n"
               << "  -t, --threads N       Number of threads (default: 1)\n"
               << "  -d, --data-dir DIR    Data directory (default: /mnt/ramdisk)\n"
+              << "  -v, --verbose         Enable view rewriter verbose output\n"
               << "  -h, --help            Show this help message\n";
 }
 
@@ -225,11 +230,12 @@ Config parse_args(int argc, char *argv[]) {
                                            {"repetitions", required_argument, 0, 'r'},
                                            {"threads", required_argument, 0, 't'},
                                            {"data-dir", required_argument, 0, 'd'},
+                                           {"verbose", no_argument, 0, 'v'},
                                            {"help", no_argument, 0, 'h'},
                                            {0, 0, 0, 0}};
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "b:s:r:t:d:h", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "b:s:r:t:d:vh", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'b':
             config.benchmark = string_to_benchmark(optarg);
@@ -245,6 +251,9 @@ Config parse_args(int argc, char *argv[]) {
             break;
         case 'd':
             config.data_dir = optarg;
+            break;
+        case 'v':
+            config.verbose = true;
             break;
         case 'h':
             print_usage(argv[0]);
