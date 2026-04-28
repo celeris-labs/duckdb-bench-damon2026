@@ -22,6 +22,7 @@
 #include "duckdb/planner/filter/constant_filter.hpp"
 #include "duckdb/planner/filter/in_filter.hpp"
 #include "duckdb/planner/filter/null_filter.hpp"
+#include "duckdb/planner/filter/expression_filter.hpp"
 #include "duckdb/planner/filter/optional_filter.hpp"
 #include "duckdb/planner/operator/logical_filter.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
@@ -176,6 +177,8 @@ static string ExpressionToSQL(const Expression &expr) {
             parts.push_back(ExpressionToSQL(*child));
         }
         sort(parts.begin(), parts.end());
+        if (parts.size() == 1)
+            return parts[0];
         string result = "(";
         for (idx_t i = 0; i < parts.size(); i++) {
             if (i > 0)
@@ -228,19 +231,23 @@ static string GetTableName(const LogicalGet &get) {
 // ──────────────────────────────────────────────────────────────────────
 
 // Render a TableFilter to a valid SQL expression string.
+// Returns false if the filter type cannot be expressed as SQL (materialization should be skipped).
 // Children of conjunction filters are sorted for a canonical form so that
 // fingerprints are stable regardless of the order DuckDB emits them.
 // OptionalFilter is transparent — we render its child as-is.
-static string FilterToSQL(const TableFilter &filter, const string &col) {
+static bool FilterToSQL(const TableFilter &filter, const string &col, string &out) {
     switch (filter.filter_type) {
     case TableFilterType::CONSTANT_COMPARISON: {
         auto &cf = filter.Cast<ConstantFilter>();
-        return col + ExpressionTypeToOperator(cf.comparison_type) + cf.constant.ToSQLString();
+        out = col + ExpressionTypeToOperator(cf.comparison_type) + cf.constant.ToSQLString();
+        return true;
     }
     case TableFilterType::IS_NULL:
-        return col + " IS NULL";
+        out = col + " IS NULL";
+        return true;
     case TableFilterType::IS_NOT_NULL:
-        return col + " IS NOT NULL";
+        out = col + " IS NOT NULL";
+        return true;
     case TableFilterType::IN_FILTER: {
         auto          &inf    = filter.Cast<InFilter>();
         string         result = col + " IN (";
@@ -254,7 +261,8 @@ static string FilterToSQL(const TableFilter &filter, const string &col) {
                 result += ", ";
             result += vals[i];
         }
-        return result + ")";
+        out = result + ")";
+        return true;
     }
     case TableFilterType::CONJUNCTION_AND:
     case TableFilterType::CONJUNCTION_OR: {
@@ -264,45 +272,62 @@ static string FilterToSQL(const TableFilter &filter, const string &col) {
                   : static_cast<const ConjunctionFilter &>(filter.Cast<ConjunctionAndFilter>());
         vector<string> parts;
         for (auto &child : conj.child_filters) {
-            string s = FilterToSQL(*child, col);
+            string s;
+            if (!FilterToSQL(*child, col, s))
+                return false;
             if (!s.empty())
                 parts.push_back(std::move(s));
         }
         if (parts.empty())
-            return "";
+            return false;
         sort(parts.begin(), parts.end());
+        if (parts.size() == 1) {
+            out = parts[0];
+            return true;
+        }
         string result = "(";
         for (idx_t i = 0; i < parts.size(); i++) {
             if (i > 0)
                 result += is_or ? " OR " : " AND ";
             result += parts[i];
         }
-        return result + ")";
+        out = result + ")";
+        return true;
+    }
+    case TableFilterType::EXPRESSION_FILTER: {
+        out = filter.Cast<ExpressionFilter>().ToString(col);
+        return true;
     }
     case TableFilterType::OPTIONAL_FILTER: {
         auto &opt = filter.Cast<OptionalFilter>();
         if (opt.child_filter) {
-            return FilterToSQL(*opt.child_filter, col);
+            FilterToSQL(*opt.child_filter, col, out);
         }
-        return "";
+        return true;
     }
+    case TableFilterType::DYNAMIC_FILTER:
+        return false;
     default:
-        // Fallback: not safe to materialize unknown filter types
-        return "";
+        Printer::Print("ViewRewriter: WARNING: unsupported filter type " +
+                       std::to_string((uint8_t)filter.filter_type) +
+                       " on column '" + col + "' — skipping materialization");
+        return false;
     }
 }
 
-static void CollectPushedDownFilters(vector<string> &column_names, TableFilterSet &filters,
+static bool CollectPushedDownFilters(vector<string> &column_names, TableFilterSet &filters,
                                      vector<string> &fps, bool ignore_optional = false) {
     for (auto &entry : filters.filters) {
         if (ignore_optional && entry.second->filter_type == TableFilterType::OPTIONAL_FILTER) {
             continue;
         }
-        string sql = FilterToSQL(*entry.second, column_names[entry.first]);
-        if (!sql.empty()) {
-            fps.push_back(sql);
+        string sql;
+        if (!FilterToSQL(*entry.second, column_names[entry.first], sql)) {
+            return false;
         }
+        fps.push_back(std::move(sql));
     }
+    return true;
 }
 
 // Try to apply a rewrite rule or enqueue auto-materialization for a GET node.
@@ -320,6 +345,10 @@ static bool TryRewriteGet(ClientContext &context, unique_ptr<LogicalOperator> &o
         if (!combined_fp.empty())
             combined_fp += " AND ";
         combined_fp += fp;
+    }
+
+    if (combined_fp.empty()) {
+        return false;
     }
 
     if (info->verbose) {
@@ -416,7 +445,7 @@ static bool TryRewriteGet(ClientContext &context, unique_ptr<LogicalOperator> &o
         pm.rule.filter_fingerprint = combined_fp;
         pm.rule.replacement_view =
             table_name + "_auto_" +
-            std::to_string(info->rules.size() + info->seen_fingerprints.size());
+            std::to_string(info->seen_fingerprints.size());
         pm.where_sql = combined_fp;
 
         info->seen_fingerprints.insert(combined_fp);
@@ -450,7 +479,13 @@ static void RewritePlan(ClientContext &context, unique_ptr<LogicalOperator> &op,
 
         // Collect fingerprints: pushed-down filters first, then LogicalFilter expressions
         vector<string> filter_fps;
-        CollectPushedDownFilters(get.names, get.table_filters, filter_fps, true);
+        if (!CollectPushedDownFilters(get.names, get.table_filters, filter_fps, true)) {
+            if (info->verbose) {
+                Printer::Print("ViewRewriter: skipping '" + table_name +
+                               "' — pushed-down filter cannot be expressed as SQL");
+            }
+            return;
+        }
         for (auto &expr : filter_op.expressions) {
             filter_fps.push_back(ExpressionToSQL(*expr));
         }
@@ -484,7 +519,13 @@ static void RewritePlan(ClientContext &context, unique_ptr<LogicalOperator> &op,
         }
 
         vector<string> filter_fps;
-        CollectPushedDownFilters(get.names, get.table_filters, filter_fps);
+        if (!CollectPushedDownFilters(get.names, get.table_filters, filter_fps)) {
+            if (info->verbose) {
+                Printer::Print("ViewRewriter: skipping '" + table_name +
+                               "' — pushed-down filter cannot be expressed as SQL");
+            }
+            return;
+        }
         if (filter_fps.empty()) {
             return;
         }

@@ -118,9 +118,6 @@ void load_data(duckdb::Connection &con, const std::string &data_dir, Benchmark b
         throw std::runtime_error("Data directory does not exist: " + data_dir);
     }
 
-    bool auto_mat = (source == Source::FILTERED || source == Source::PROJECTED);
-    con.Query("SET view_rewriter_auto_materialize TO " + std::string(auto_mat ? "true" : "false"));
-
     // Discover all files in data_dir with the expected extension for this source
     std::string extension;
     switch (source) {
@@ -182,7 +179,11 @@ void load_data(duckdb::Connection &con, const std::string &data_dir, Benchmark b
         }
     }
 
+    bool auto_mat = (source == Source::FILTERED || source == Source::PROJECTED);
+    
     if (auto_mat) {
+        con.Query("SET view_rewriter_auto_materialize TO true");
+
         std::cout << "Warming up: running all queries to auto-generate materialized views..."
                   << std::endl;
         for (const auto &query_path : get_queries(benchmark)) {
@@ -191,6 +192,8 @@ void load_data(duckdb::Connection &con, const std::string &data_dir, Benchmark b
             con.Query(sql); // ignore errors; warm-up only
         }
         std::cout << "Warm-up complete." << std::endl;
+
+        con.Query("SET view_rewriter_auto_materialize TO false");
     }
 }
 
