@@ -77,9 +77,9 @@ def _cpu_time_subplot(ax, df, benchmark):
     x = np.arange(len(pivot.index))
     width = 0.65
 
-    ax.bar(x, pivot["decode_pct"], width, label="Parquet decoding", color=COLOR_DECODE, edgecolor="black", linewidth=0.5)
-    ax.bar(x, pivot["filter_pct"], width, bottom=pivot["decode_pct"], label="Filtering", color=COLOR_FILTERED, edgecolor="black", linewidth=0.5)
-    ax.bar(x, [100 for _ in range(len(pivot.index))], width, bottom=pivot["decode_pct"] + pivot["filter_pct"], label="Remaining query", color=COLOR_QUERY, edgecolor="black", linewidth=0.5)
+    ax.bar(x, pivot["decode_pct"], width, label="Parquet decoding", color=COLOR_DECODE, edgecolor="black", linewidth=0)
+    ax.bar(x, pivot["filter_pct"], width, bottom=pivot["decode_pct"], label="Filtering", color=COLOR_FILTERED, edgecolor="black", linewidth=0)
+    ax.bar(x, [100 for _ in range(len(pivot.index))], width, bottom=pivot["decode_pct"] + pivot["filter_pct"], label="Remaining query", color=COLOR_QUERY, edgecolor="black", linewidth=0)
 
     avg_query = 100.0 - pivot.loc[valid, "query_pct"].mean()
     avg_decode = pivot.loc[valid, "decode_pct"].mean()
@@ -122,55 +122,89 @@ def plot_cpu_time(df_tpch, df_clickbench, df_tpcds):
 
     plt.savefig("plots/cpu_time_stacked.pdf", bbox_inches="tight")
 
-def plot_appetizer(df_10, df_30):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 3.25))
-    
-    for ax, data, sf, label, streams in [(ax1, df_10.copy(), 10, "a", 3), (ax2, df_30.copy(), 30, "b", 4)]:
+def plot_appetizer(df_tpch, df_clickbench, df_tpcds):
+    fig = plt.figure(figsize=(7, 6))
+    gs = fig.add_gridspec(2, 2, hspace=0.45)
+    ax1 = fig.add_subplot(gs[0, :])
+    ax2 = fig.add_subplot(gs[1, 0])
+    ax3 = fig.add_subplot(gs[1, 1])
+
+    configs = [
+        (ax1, df_tpch.copy(), "tpch", "a"),
+        (ax2, df_clickbench.copy(), "clickbench", "b"),
+        (ax3, df_tpcds.copy(), "tpcds", "c"),
+    ]
+    benchmark_queries = {"tpch": 22, "clickbench": 43, "tpcds": 99}
+    benchmark_labels = {"tpch": "TPC-H", "clickbench": "ClickBench", "tpcds": "TPC-DS"}
+
+    for ax, data, benchmark, label in configs:
+        streams = 4
+        n_queries = benchmark_queries[benchmark]
+        factor = streams * n_queries * 3600
+
         ax.set_axisbelow(True)
         ax.grid(axis='y')
         ax.grid(axis='x')
         ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x/1000:.0f}k" if x > 0 else "0"))
         ax.set_xlim(0, 65)
-        factor = streams * 22 * 3600
-        subset = data[(data["source"] == "parquet") & (data["streams"] == streams)].sort_values("threads")
-        ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="s", color=COLOR_DECODE, 
-                label="Parquet files", markersize=2)
-        
-        subset = data[(data["source"] == "memory") & (data["streams"] == streams)].sort_values("threads")
-        ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="o", color=COLOR_FILTERED, 
-                label="Tables", markersize=2)
-        
-        subset = data[(data["source"] == "filtered") & (data["streams"] == streams)].sort_values("threads")
-        ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="^", color=COLOR_QUERY, 
-                label="Pre-filtered tables", markersize=2)
-        
-        memory_val = factor / data[(data["source"] == "filtered") & (data["threads"] == 16) & (data["streams"] == streams)]["runtime_sec"].values[0]
-        ax.axhline(y=memory_val, color=COLOR_QUERY, linestyle="--")
-        ax.text(subset["threads"].values[-1] * 0.8, memory_val + (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.02, f"{memory_val:.0f} Q/h", ha="left",
-                fontsize=10)
 
-        if sf == 10:
+        subset = data[(data["source"] == "parquet") & (data["streams"] == streams)].sort_values("threads")
+        ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="s", color=COLOR_DECODE,
+                label="Parquet files", markersize=2)
+
+        subset = data[(data["source"] == "memory") & (data["streams"] == streams)].sort_values("threads")
+        ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="o", color=COLOR_FILTERED,
+                label="Tables", markersize=2)
+
+        subset = data[(data["source"] == "filtered") & (data["streams"] == streams)].sort_values("threads")
+        ax.plot(subset["threads"], factor / subset["runtime_sec"], marker="^", color=COLOR_QUERY,
+                label="Pre-filtered tables", markersize=2)
+
+        filtered_data = data[(data["source"] == "filtered") & (data["streams"] == streams)]
+        if not filtered_data.empty and 16 in filtered_data["threads"].values:
+            memory_val = factor / filtered_data[filtered_data["threads"] == 16]["runtime_sec"].values[0]
+            if benchmark == "tpch":
+                ax.axhline(y=memory_val, color=COLOR_QUERY, linestyle="--")
+                ax.text(subset["threads"].values[-1] * 0.88, memory_val - (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.02, f"{memory_val:.0f} Q/h", va="top", ha="left",
+                        fontsize=10)
+
+        peak_threads = 60
+        parquet_peak = data[(data["source"] == "parquet") & (data["threads"] == peak_threads) & (data["streams"] == streams)]
+        filtered_peak = data[(data["source"] == "filtered") & (data["threads"] == peak_threads) & (data["streams"] == streams)]
+        if not parquet_peak.empty and not filtered_peak.empty:
+            parquet_val_max = factor / parquet_peak["runtime_sec"].values[0]
+            filtered_val_max = factor / filtered_peak["runtime_sec"].values[0]
+            speedup = filtered_val_max / parquet_val_max
+            ax.annotate("",
+                xy=(peak_threads, filtered_val_max),
+                xytext=(peak_threads, parquet_val_max),
+                arrowprops=dict(arrowstyle="<->", lw=1.2),
+            )
+            mid_y = (parquet_val_max + filtered_val_max) / 2
+            ax.text(peak_threads - .5, mid_y, f"{speedup:.1f}x", fontsize=10, va="center", ha="right")
+
+        if benchmark == "tpch" and not filtered_data.empty and 16 in filtered_data["threads"].values:
             ax.annotate("16 threads",
                 xy=(16, memory_val),
                 xytext=(10, memory_val + (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.15),
-                arrowprops=dict(arrowstyle="->", color="#3A3A3C", lw=1.0),
+                arrowprops=dict(arrowstyle="->", lw=1.0),
                 fontsize=10, ha="center",
             )
-        
+
         ax.set_xlabel("Number of threads", fontweight="bold")
         ticks = sorted(data["threads"].unique())
         ticks = [t for t in ticks if t == 1 or t % 8 == 0]
         ax.set_xticks(ticks)
         ax.set_xticklabels(ticks)
-        ax.set_title(f"({label}) TPC-H scale factor {sf}", fontsize=12, y=-0.35)
-    
+        ax.set_title(f"({label}) {benchmark_labels[benchmark]} throughput", fontsize=12)
+
     ax1.set_ylabel("Queries / h", fontweight="bold")
+    ax2.set_ylabel("Queries / h", fontweight="bold")
 
     # Single shared legend on top
     handles, labels = ax1.get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 1.07), ncol=3, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
+    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, .985), ncol=3, frameon=False, prop={'weight': 'bold'}, columnspacing=1.2, handletextpad=0.3, handlelength=1.0)
     
-    plt.tight_layout()
     plt.savefig("plots/latency_by_threads.pdf", bbox_inches="tight")
 
 def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
@@ -248,8 +282,8 @@ def plot_csv_json(df_10, df_10_unsorted, df_10_sorted):
                 offset = idx * (bar_width + 0.075) - (bar_width + 0.075) / 2
 
                 hatch = '////' if label == "Sorted" else None
-                ax.bar(x + offset, scan_filter, bar_width, label=f"Scan", color=COLOR_DECODE, hatch=hatch, edgecolor="black", linewidth=0.5)
-                ax.bar(x + offset, rest, bar_width, bottom=scan_filter, label=f"Rest", color=COLOR_QUERY, hatch=hatch, edgecolor="black", linewidth=0.5)
+                ax.bar(x + offset, scan_filter, bar_width, label=f"Scan", color=COLOR_DECODE, hatch=hatch, edgecolor="black", linewidth=0)
+                ax.bar(x + offset, rest, bar_width, bottom=scan_filter, label=f"Rest", color=COLOR_QUERY, hatch=hatch, edgecolor="black", linewidth=0)
 
             ax.set_xlabel("TPC-H query", fontweight="bold")
             ax.set_xticks(np.arange(len(queries)))
@@ -292,22 +326,25 @@ def main():
     plot_cpu_time(tpch_df, clickbench_df, tpcds_df)
 
     # Throughput plots
-    throughput_data_10 = []
-    throughput_data_30 = []
+    throughput_data_tpch = []
+    throughput_data_clickbench = []
+    throughput_data_tpcds = []
 
-    for filepath in glob.glob(os.path.join("measurements", "throughput", "tpch-10", "*.json")):
-        with open(filepath, "r") as f:
-            this_data = json.load(f) # each file contains a JSON object
-            throughput_data_10.append(this_data)
     for filepath in glob.glob(os.path.join("measurements", "throughput", "tpch-30", "*.json")):
         with open(filepath, "r") as f:
-            this_data = json.load(f) # each file contains a JSON object
-            throughput_data_30.append(this_data)
-    
-    throughput_df_10 = pd.DataFrame(throughput_data_10)
-    throughput_df_30 = pd.DataFrame(throughput_data_30)
+            throughput_data_tpch.append(json.load(f))
+    for filepath in glob.glob(os.path.join("measurements", "throughput", "clickbench", "*.json")):
+        with open(filepath, "r") as f:
+            throughput_data_clickbench.append(json.load(f))
+    for filepath in glob.glob(os.path.join("measurements", "throughput", "tpcds-30", "*.json")):
+        with open(filepath, "r") as f:
+            throughput_data_tpcds.append(json.load(f))
 
-    plot_appetizer(throughput_df_10, throughput_df_30)
+    throughput_df_tpch = pd.DataFrame(throughput_data_tpch)
+    throughput_df_clickbench = pd.DataFrame(throughput_data_clickbench)
+    throughput_df_tpcds = pd.DataFrame(throughput_data_tpcds)
+
+    plot_appetizer(throughput_df_tpch, throughput_df_clickbench, throughput_df_tpcds)
 
     # CSV and JSON plot
     throughput_data_10 = []
