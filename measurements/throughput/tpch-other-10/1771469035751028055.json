@@ -1,0 +1,9 @@
+{
+    "runtime_sec": 137.796531,
+    "runtimes": [137.796531],
+    "threads": 15,
+    "streams": 3,
+    "data_dir": "/mnt/ramdisk",
+    "source": "json",
+    "repetitions": 1
+}

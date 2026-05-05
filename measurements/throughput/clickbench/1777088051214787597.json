@@ -1,0 +1,10 @@
+{
+    "runtime_sec": 23.881338,
+    "runtimes": [22.892838, 23.668530, 23.881338, 24.530170, 25.678156],
+    "threads": 58,
+    "streams": 4,
+    "data_dir": "/mnt/ramdisk",
+    "benchmark": "clickbench",
+    "source": "memory",
+    "repetitions": 5
+}

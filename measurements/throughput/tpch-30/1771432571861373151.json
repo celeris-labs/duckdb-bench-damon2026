@@ -1,0 +1,9 @@
+{
+    "runtime_sec": 9.038757,
+    "runtimes": [8.879558, 8.921840, 9.038757, 9.211262, 9.212447],
+    "threads": 61,
+    "streams": 4,
+    "data_dir": "/mnt/ramdisk",
+    "source": "filtered",
+    "repetitions": 5
+}

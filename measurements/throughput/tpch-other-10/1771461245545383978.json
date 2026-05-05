@@ -1,0 +1,9 @@
+{
+    "runtime_sec": 88.136885,
+    "runtimes": [88.136885],
+    "threads": 25,
+    "streams": 3,
+    "data_dir": "/mnt/ramdisk",
+    "source": "csv",
+    "repetitions": 1
+}

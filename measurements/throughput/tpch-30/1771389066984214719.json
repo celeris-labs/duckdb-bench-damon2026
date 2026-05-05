@@ -1,0 +1,9 @@
+{
+    "runtime_sec": 23.171794,
+    "runtimes": [23.031570, 23.129580, 23.171794, 23.298877, 23.362842],
+    "threads": 36,
+    "streams": 4,
+    "data_dir": "/mnt/ramdisk",
+    "source": "parquet",
+    "repetitions": 5
+}

@@ -1,0 +1,10 @@
+{
+    "runtime_sec": 41.469969,
+    "runtimes": [40.992990, 41.131606, 41.469969, 41.680525, 42.164066],
+    "threads": 56,
+    "streams": 4,
+    "data_dir": "/mnt/ramdisk",
+    "benchmark": "tpcds",
+    "source": "filtered",
+    "repetitions": 5
+}

@@ -1,0 +1,10 @@
+{
+    "runtime_sec": 123.238726,
+    "runtimes": [122.517764, 122.791009, 123.238726, 123.894945, 126.828217],
+    "threads": 8,
+    "streams": 4,
+    "data_dir": "/mnt/ramdisk",
+    "benchmark": "clickbench",
+    "source": "parquet",
+    "repetitions": 5
+}
